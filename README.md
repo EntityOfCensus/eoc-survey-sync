@@ -25,11 +25,10 @@ The system ensures that every **Client** and **Respondent Node** is consistently
 
 ## Project Structure
 
-
 - **process/**: This folder contains all the **AO Lua APIs** used to define the behavior of the Main AO Process, Client Nodes, and Respondent Nodes.
   - **main_node_api.lua**: Lua script managing client/respondent registration, schema synchronization, centralized metadata, and target group filtering.
   - **client_node_api.lua**: Lua script that handles survey creation and management for the clients.
-  - **respondent_node_api.lua**: Lua script that manages survey participation and response storage for respondents.
+  - **respondent_node_api.lua**: Lua script that manages survey participation, responses, and holds answers to standardized questionnaires.
 
 - **src/**: This folder will contain Node.js testing files for AO processes (described later).
 
@@ -37,13 +36,13 @@ The system ensures that every **Client** and **Respondent Node** is consistently
 
 ### Main AO Process API (`main_node_api.lua`)
 
-The **Main AO Process API** handles the registration of clients and respondents, maintains metadata, manages schema synchronization, and provides advanced target group filtering.
+The **Main AO Process API** handles the registration of clients and respondents, maintains metadata, manages schema synchronization, and provides advanced target group filtering based on **standardized questionnaires**.
 
 #### Key Functions:
 
 1. **`InitDb()`**:
    - Initializes the schema for the Main AO Process.
-   - Creates tables for **Clients**, **Respondents**, **Survey Metadata**, **Schema Management**, and **Standard Survey Elements**.
+   - Creates tables for **Clients**, **Respondents**, **Survey Metadata**, **Schema Management**, and **Standard Survey Elements** (such as categories, questions, and answer options).
 
 2. **`RegisterClient(client_name)`**:
    - Registers a new client, creates a new **AO compute/storage node** for that client, and assigns a schema version.
@@ -51,7 +50,7 @@ The **Main AO Process API** handles the registration of clients and respondents,
 
 3. **`RegisterRespondent(respondent_name, age, sex, geolocation)`**:
    - Registers a new respondent, creates an **AO node** for them, and initializes it with the latest schema.
-   - Stores respondent metadata, including **age, sex, and geolocation**, for use in advanced target group filtering.
+   - Stores respondent metadata and provides the respondent with a standardized questionnaire to complete.
    - Logs the respondent's registration in the `AuditLog`.
 
 4. **`UpdateSchemaVersion(schema_sql, description)`**:
@@ -61,6 +60,10 @@ The **Main AO Process API** handles the registration of clients and respondents,
 5. **`PropagateSchemaToNodes(schema_sql, schema_version)`**:
    - Applies schema updates to all existing **Client and Respondent Nodes**.
    - Logs success or failure for each propagation attempt in the `AuditLog`.
+
+6. **`GetEligibleRespondentsForSurvey(survey_id)`**:
+   - Matches respondents based on **predefined criteria** in the standardized questionnaire.
+   - Queries each **Respondent Node** to find answers that match the requirements set by the **Client** for the survey.
 
 ### Client Node API (`client_node_api.lua`)
 
@@ -73,17 +76,17 @@ The **Client Node API** allows clients to create and manage surveys using standa
    - Used during initial setup and schema updates.
 
 2. **`CreateSurvey(survey_data, target_criteria)`**:
-   - Creates a new survey using the provided `survey_data` and **target criteria** (e.g., geolocation, age range, sex).
+   - Creates a new survey using the provided `survey_data` and **target criteria** based on **answers to standardized questions**.
    - Stores references to **categories**, **questions**, and **answer options** from the standardized pool in the **Main AO Process**.
-   - Specifies the **target audience** based on `target_criteria`.
+   - Specifies the **advanced target criteria** that will be used to match respondents.
 
 3. **`PublishSurvey(survey_id)`**:
-   - Publishes a draft survey, making it available to eligible respondents.
+   - Publishes a draft survey, making it available to eligible respondents based on **advanced target group logic**.
    - Updates the status of the survey in the `SurveyMetadata` table in the **Main AO Process**.
 
 ### Respondent Node API (`respondent_node_api.lua`)
 
-The **Respondent Node API** enables respondents to answer surveys targeted to them based on demographic information.
+The **Respondent Node API** enables respondents to answer standardized questionnaires and participate in surveys targeted to them.
 
 #### Key Functions:
 
@@ -91,38 +94,45 @@ The **Respondent Node API** enables respondents to answer surveys targeted to th
    - Initializes or updates the respondent node database with the provided schema SQL.
    - Ensures consistency with the latest version of the schema.
 
-2. **`GetAvailableSurveys()`**:
-   - Fetches a list of surveys for which the respondent is eligible, based on their demographic data (`age`, `sex`, `geolocation`).
-   - Filters surveys using the **target group criteria** stored in the **SurveyMetadata** table.
+2. **`AnswerStandardQuestionnaire(answers)`**:
+   - Records the respondent's answers to the standardized questionnaire, storing them locally in the **Respondent Node**.
+   - These answers are used by the **Main AO Process** to determine eligibility for surveys.
 
-3. **`SubmitSurveyResponse(survey_id, responses)`**:
+3. **`GetAvailableSurveys()`**:
+   - Fetches a list of surveys for which the respondent is eligible, based on their answers to the standardized questions.
+   - Filters surveys using the **target group criteria** set by the **Client**.
+
+4. **`SubmitSurveyResponse(survey_id, responses)`**:
    - Records the respondent's answers in the `SurveyResponses` table.
    - Logs the response submission in the `AuditLog`.
 
 ## Advanced Target Group Logic
 
-The **advanced target group** feature allows **Clients** to create surveys targeted at specific audiences based on demographic information like **geolocation**, **age**, and **sex**.
+The **advanced target group** feature allows **Clients** to create surveys targeted at respondents based on their answers to a **standardized questionnaire**. This provides a powerful way to create **complex respondent matching** based on detailed information beyond simple demographics.
 
 ### Workflow for Advanced Target Group Filtering
 
-1. **Client Defines Target Criteria**:
-   - During **survey creation**, the **Client Node** defines the target audience by specifying **target_criteria** (`geolocation`, `age range`, `sex`).
-   - These criteria are saved in the `SurveyMetadata` table managed by the **Main AO Process**.
+1. **Standardized Questionnaire Setup**:
+   - The **Main AO Process** maintains standardized **categories, questions, and answer options** that respondents answer when they first register.
+   - These answers are stored in each **Respondent Node**.
 
-2. **Survey Matching for Respondents**:
-   - When a **Respondent Node** requests available surveys (`GetAvailableSurveys()`), the **Main AO Process** applies the filtering logic based on the stored target criteria.
-   - The **Main AO Process** checks whether the respondent's demographic details match the criteria defined by the **Client** for each survey.
+2. **Client Defines Target Criteria**:
+   - During **survey creation**, the **Client Node** defines advanced target group criteria based on **answers** to specific questions from the standardized questionnaire.
+   - For example, a client may target respondents who answered "Yes" to "Do you own a car?" and are "between 25-34 years old."
 
-3. **Respondent Receives Surveys**:
+3. **Survey Matching for Respondents**:
+   - When a **Respondent Node** requests available surveys (`GetAvailableSurveys()`), the **Main AO Process** uses the predefined criteria to determine eligibility.
+   - Each **Respondent Node**'s answers are compared with the **target group criteria** to find matching surveys.
+
+4. **Respondent Receives Surveys**:
    - If the respondent's data matches the **target criteria** of a survey, that survey is included in the list of **available surveys**.
-   - This ensures that each respondent only sees the surveys they are eligible for, increasing relevance and engagement.
 
 ### Target Group Logic Implementation in Main AO Process API
 
-- **`GetEligibleSurveysForRespondent(respondent_id)`**:
-  - Fetches the demographic data for the respondent.
-  - Queries the `SurveyMetadata` table to find surveys with **target criteria** matching the respondent's **geolocation, age, and sex**.
-  - Returns a list of **eligible surveys**.
+- **`GetEligibleRespondentsForSurvey(survey_id)`**:
+  - Fetches the criteria defined by the **Client** for the specified `survey_id`.
+  - Queries each **Respondent Node** to check whether their **questionnaire answers** match the criteria.
+  - Returns a list of **eligible respondents**.
 
 ## PlantUML Flow Diagrams
 
@@ -175,7 +185,34 @@ ClientNode -> Main : Update SurveyMetadata (status: published)
 @enduml
 ```
 
-### 3. Respondent Survey Matching and Response Submission
+### 3. Advanced Target Group Definition and Matching
+
+![Advanced Target Group Definition and Matching](assets/Advanced_Target_Group_Definition_and_Matching.svg)
+
+```plantuml
+@startuml
+actor Client
+participant "Client AO Node" as ClientNode
+participant "Main AO Process" as Main
+participant "Respondent AO Node" as RespondentNode
+
+== Create Survey with Advanced Target Group ==
+Client -> ClientNode : CreateSurvey(survey_data, target_criteria)
+ClientNode -> Main : Store target criteria in SurveyMetadata
+
+== Respondent Answers Standardized Questionnaire ==
+Respondent -> RespondentNode : AnswerStandardQuestionnaire(answers)
+RespondentNode -> RespondentNode : Store answers locally
+
+== Get Eligible Respondents ==
+Client -> Main : GetEligibleRespondentsForSurvey(survey_id)
+Main -> RespondentNode : Check if answers match target criteria
+RespondentNode -> Main : Return matching status
+Main -> Client : List of eligible respondents
+@enduml
+``` 
+
+### 4. Respondent Survey Matching and Response Submission
 
 ![Respondent Survey Matching and Response Submission](assets/Respondent_Survey_Matching_and_Response_Submission.svg)
 
@@ -198,7 +235,7 @@ RespondentNode -> Main : Update AuditLog with response details
 @enduml
 ```
 
-### 4. Schema Update and Synchronization
+### 5. Schema Update and Synchronization
 
 ![Schema Update and Synchronization](assets/Schema_Update_and_Synchronization.svg)
 
@@ -224,12 +261,3 @@ Main -> Main : Update AuditLog
 ## Contributing
 ## License
 This project is licensed under the Apache License Version 2.0
-### Summary:
-
-- The **README.md** file provides a comprehensive overview of the project, describing the purpose, structure, and API functions of each AO process.
-- **Main AO Process API**: Manages the central orchestration, including schema management and client/respondent registration.
-- **Client Node API**: Focused on survey creation and publication.
-- **Respondent Node API**: Manages survey participation and stores responses.
-- **PlantUML diagrams** illustrate the key interactions between the **Main AO Process**, **Client AO Nodes**, and **Respondent AO Nodes** to provide a visual representation of workflows like **registration**, **survey creation**, and **schema synchronization**.
-
-Feel free to provide more details on the `src` folder, and I can incorporate that into the README or further documentation as needed.
