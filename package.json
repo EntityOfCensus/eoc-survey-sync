@@ -1,0 +1,16 @@
+{
+  "name": "eoc-survey-sync",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Test env for eoc survey sync api on AO",
+  "main": "main_node_client_specs.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@permaweb/aoconnect": "^0.0.59",
+    "dotenv": "^16.4.5"
+  }
+}
