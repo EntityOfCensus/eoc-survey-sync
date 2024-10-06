@@ -4,48 +4,13 @@
 
 local json = require("json")
 local ao = require("ao")
-local sqlite3 = require("sqlite3")
+local sqlite3 = require("lsqlite3")
 
 -- Open the database
-local db = sqlite3.open("client_node.db")
-
--- Schema Definitions for Client Node
-CLIENT_CATEGORIES = [[
-  CREATE TABLE IF NOT EXISTS ClientCategories (
-    client_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    survey_id INTEGER,
-    standard_category_id INTEGER,
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (standard_category_id) REFERENCES StandardCategories(category_id)
-  );
-]]
-
-CLIENT_QUESTIONS = [[
-  CREATE TABLE IF NOT EXISTS ClientQuestions (
-    client_question_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    survey_id INTEGER,
-    standard_question_id INTEGER,
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (standard_question_id) REFERENCES StandardQuestions(question_id)
-  );
-]]
-
-CLIENT_ANSWER_OPTIONS = [[
-  CREATE TABLE IF NOT EXISTS ClientAnswerOptions (
-    client_option_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_question_id INTEGER,
-    standard_option_id INTEGER,
-    FOREIGN KEY (client_question_id) REFERENCES ClientQuestions(client_question_id),
-    FOREIGN KEY (standard_option_id) REFERENCES StandardAnswerOptions(option_id)
-  );
-]]
+local db = sqlite3.open_memory();
 
 -- Function to Initialize the Client Node Database
 function InitDb(schema_sql)
-  db:exec(CLIENT_CATEGORIES)
-  db:exec(CLIENT_QUESTIONS)
-  db:exec(CLIENT_ANSWER_OPTIONS)
-
   -- Execute schema_sql if provided (e.g., schema updates)
   if schema_sql then
     db:exec(schema_sql)
@@ -162,6 +127,3 @@ end
 function CloseDb()
   db:close()
 end
-
--- Example Initialization
-InitDb()

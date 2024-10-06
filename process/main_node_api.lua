@@ -9,12 +9,24 @@ local sqlite3 = require("lsqlite3")
 -- Open the database
 local db = db or sqlite3.open_memory()
 
+-- NodeScripts Table Definition with Versioning
+NODE_SCRIPTS = [[
+  CREATE TABLE IF NOT EXISTS NodeScripts (
+    script_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_type TEXT NOT NULL,          -- Specifies the node type: "client", "respondent"
+    script_name TEXT NOT NULL,        -- The name of the script file (e.g., "client_node.lua")
+    script_version TEXT NOT NULL,     -- Version identifier for the script (e.g., "v1.0")
+    script_content TEXT NOT NULL,     -- Stores the Lua code as a string
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
 -- Schema Definitions
 CLIENTS = [[
   CREATE TABLE IF NOT EXISTS Clients (
     client_id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_name TEXT NOT NULL,
-    assigned_node_id INTEGER,
+    assigned_node_id TEXT NOT NULL,
     schema_version TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'active'
@@ -99,8 +111,70 @@ AUDIT_LOG = [[
   );
 ]]
 
+-- Schema Definitions for Client Node
+CLIENT_CATEGORIES = [[
+  CREATE TABLE IF NOT EXISTS ClientCategories (
+    client_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    survey_id INTEGER,
+    standard_category_id INTEGER,
+    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
+    FOREIGN KEY (standard_category_id) REFERENCES StandardCategories(category_id)
+  );
+]]
+
+CLIENT_QUESTIONS = [[
+  CREATE TABLE IF NOT EXISTS ClientQuestions (
+    client_question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    survey_id INTEGER,
+    standard_question_id INTEGER,
+    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
+    FOREIGN KEY (standard_question_id) REFERENCES StandardQuestions(question_id)
+  );
+]]
+
+CLIENT_ANSWER_OPTIONS = [[
+  CREATE TABLE IF NOT EXISTS ClientAnswerOptions (
+    client_option_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_question_id INTEGER,
+    standard_option_id INTEGER,
+    FOREIGN KEY (client_question_id) REFERENCES ClientQuestions(client_question_id),
+    FOREIGN KEY (standard_option_id) REFERENCES StandardAnswerOptions(option_id)
+  );
+]]
+
+-- Schema Definitions for Respondent Node
+RESPONDENT_QUESTIONNAIRE_ANSWERS = [[
+  CREATE TABLE IF NOT EXISTS RespondentQuestionnaireAnswers (
+    answer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    respondent_id INTEGER,
+    question_id INTEGER,
+    selected_option_id INTEGER,
+    answer_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
+    FOREIGN KEY (question_id) REFERENCES StandardQuestions(question_id),
+    FOREIGN KEY (selected_option_id) REFERENCES StandardAnswerOptions(option_id)
+  );
+]]
+
+SURVEY_RESPONSES = [[
+  CREATE TABLE IF NOT EXISTS SurveyResponses (
+    response_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    respondent_id INTEGER,
+    survey_id INTEGER,
+    question_id INTEGER,
+    selected_option_id INTEGER,
+    response_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completion_time DATETIME,
+    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
+    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
+    FOREIGN KEY (question_id) REFERENCES ClientQuestions(client_question_id),
+    FOREIGN KEY (selected_option_id) REFERENCES ClientAnswerOptions(client_option_id)
+  );
+]]
+
 -- Function to Initialize the Database
 function InitDb()
+  db:exec(NODE_SCRIPTS)
   db:exec(CLIENTS)
   db:exec(RESPONDENTS)
   db:exec(SURVEY_METADATA)
@@ -110,20 +184,99 @@ function InitDb()
   db:exec(STANDARD_ANSWER_OPTIONS)
   db:exec(AUDIT_LOG)
 
-  local initial_main_schema_sql = CLIENTS .. RESPONDENTS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. SURVEY_METADATA .. AUDIT_LOG
+  local initial_main_schema_sql = NODE_SCRIPTS .. CLIENTS .. RESPONDENTS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. SURVEY_METADATA .. AUDIT_LOG
   InsertSchemaVersion("v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
 
+  local initial_client_schema_sql = CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS
+  InsertSchemaVersion("v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
+
+  local initial_respondent_schema_sql = RESPONDENT_QUESTIONNAIRE_ANSWERS .. SURVEY_RESPONSES
+  InsertSchemaVersion("v1.0", "respondent", initial_respondent_schema_sql, "Initial schema for respondent AO process")
+   
+end
+
+-- Function to Insert a Lua Script into the NodeScripts Table
+function InsertNodeScript(node_type, script_name, script_version, script_content)
+  local insert_query = [[
+    INSERT INTO NodeScripts (node_type, script_name, script_version, script_content, created_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
+  ]]
+  local stmt = db:prepare(insert_query)
+  stmt:bind_values(node_type, script_name, script_version, script_content)
+  stmt:step()
+  stmt:finalize()
+end
+
+-- Function to Retrieve All Lua Scripts by Node Type
+function GetAllNodeScriptsByType(node_type)
+  local query = [[
+    SELECT script_id, script_name, script_version, script_content FROM NodeScripts
+    WHERE node_type = ?;
+  ]]
+  local stmt = db:prepare(query)
+  stmt:bind_values(node_type)
+
+  local scripts = {}
+  for row in stmt:nrows() do
+    table.insert(scripts, {
+      script_id = row.script_id,
+      script_name = row.script_name,
+      script_version = row.script_version,
+      script_content = row.script_content
+    })
+  end
+  stmt:finalize()
+  
+  return scripts
+end
+
+-- Function to Retrieve Lua Script by Type and Version
+function GetNodeScriptByVersion(node_type, script_version)
+  local query = [[
+    SELECT script_content FROM NodeScripts
+    WHERE node_type = ? AND script_version = ?
+    ORDER BY created_at DESC LIMIT 1;
+  ]]
+  local stmt = db:prepare(query)
+  stmt:bind_values(node_type, script_name, script_version)
+
+  local script_content = nil
+  if stmt:step() == sqlite3.ROW then
+    script_content = stmt:get_value(0)
+  end
+  stmt:finalize()
+  
+  return script_content
+end
+
+-- Function to Retrieve the Latest Lua Script by Node Type
+function GetLatestNodeScript(node_type)
+  local query = [[
+    SELECT script_content FROM NodeScripts
+    WHERE node_type = ?
+    ORDER BY script_version DESC, created_at DESC LIMIT 1;
+  ]]
+  local stmt = db:prepare(query)
+  stmt:bind_values(node_type)
+
+  local script_content = nil
+  if stmt:step() == sqlite3.ROW then
+    script_content = stmt:get_value(0)
+  end
+  stmt:finalize()
+  
+  return script_content
 end
 
 -- Function to Register a New Client
-function RegisterClient(client_name)
+function AddClient(client_name, assigned_node_id, schema_version)
   -- Insert a new client into the Clients table
   local insert_client = [[
-    INSERT INTO Clients (client_name, schema_version, created_at, status)
-    VALUES (?, 'v1.0', CURRENT_TIMESTAMP, 'active');
+    INSERT INTO Clients (client_name, assigned_node_id, schema_version, created_at, status)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'active');
   ]]
   local stmt = db:prepare(insert_client)
-  stmt:bind_values(client_name)
+  stmt:bind_values(client_name, assigned_node_id, schema_version)
   stmt:step()
   stmt:finalize()
 
@@ -262,68 +415,91 @@ end
 InitDb()
 
 --[[
-     Info
+     CanSpawnClient
    ]]
 --
 Handlers.add(
-    "info",
-    Handlers.utils.hasMatchingTag("Action", "Info"),
+    "CanRegister",
+    Handlers.utils.hasMatchingTag("Action", "CanRegister"),
     function(msg)
-        ao.send(
-            {
-                Target = msg.From,
-                Tags = {
-                    Name = "ON aiR",
-                },
-                Data = "Echo info"  
-            }
-        )
+      local script_content =  GetLatestNodeScript(msg.Tags.node_type);
+      if script_content then
+          ao.send(
+              {
+                  Target = msg.From,
+                  Data = "Ok"
+              }
+          )
+      end
     end
 )
-
 
 --[[
-     EncryptIntegerValue
+     LoadApi
    ]]
 --
 Handlers.add(
-    "EncryptIntegerValue",
-    Handlers.utils.hasMatchingTag("Action", "EncryptIntegerValue"),
+    "LoadApi",
+    Handlers.utils.hasMatchingTag("Action", "LoadApi"),
     function(msg)
-        local local_s = "test"
-        print(local_s)
-        print(msg)
-        if local_s then
-            ao.send(
-                {
-                    Target = msg.From,
-                    Tags = {
-                        Action = "GetSchemaManagement"
-                    },
-                    Data = local_s
-                }
-            )
-        end
-    end
+      local local_s = json.decode(msg.Data)
+      InsertNodeScript(local_s.node_type, local_s.script_name, local_s.script_version, local_s.script_content)    
+  end
 )
 
+--[[
+     GetSchemaManagement
+   ]]
+--
 Handlers.add(
     "GetSchemaManagement",
     Handlers.utils.hasMatchingTag("Action", "GetSchemaManagement"),
     function(msg)
         local schema_management_records =  RetrieveAllSchemaManagementAsJson();
-        print(schema_management_records)
-        print(msg)
         if schema_management_records then
             ao.send(
                 {
                     Target = msg.From,
-                    Tags = {
-                        Action = "GetSchemaManagement"
-                    },
                     Data = schema_management_records
                 }
             )
         end
+    end
+)
+
+--[[
+     GetNodeScripts
+   ]]
+--
+Handlers.add(
+    "GetNodeScripts",
+    Handlers.utils.hasMatchingTag("Action", "GetNodeScripts"),
+    function(msg)
+      local node_script_records =  GetAllNodeScriptsByType(msg.Tags.node_type);
+        if node_script_records then
+            ao.send(
+                {
+                    Target = msg.From,
+                    Data = json.encode(node_script_records)
+                }
+            )
+        end
+    end
+)
+
+--[[
+     RegisterClient
+   ]]
+--
+Handlers.add(
+    "RegisterClient",
+    Handlers.utils.hasMatchingTag("Action", "RegisterClient"),
+    function(msg)
+      local client_register_form = json.decode(msg.Data)
+      local script_content =  GetLatestNodeScript("client")
+      if script_content then 
+        Send({ Target = client_register_form.process_id, Action = "Eval", Data = script_content })
+        AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
+      end  
     end
 )

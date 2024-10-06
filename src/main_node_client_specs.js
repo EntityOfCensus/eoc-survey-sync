@@ -9,8 +9,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const wallet = JSON.parse(process.env.JWK);
-const ao_process_id = process.env.FHE_PROCESS_ID
-const ao_process_id2 = process.env.FHE_PROCESS_ID2
+const ao_process_id = process.env.MAIN_NODE_ID
 
 
 async function getSchemaManagement() {
@@ -30,27 +29,4 @@ async function getSchemaManagement() {
     }
 }
 
-
-async function encryptIntegerValue(value) {
-  try {
-    console.log('encrypt value', value);
-    const txIn = await dryrun({
-      process: ao_process_id,
-      tags: [
-        { name: 'Action', value: 'EncryptIntegerValue' },
-        { name: 'Val', value: value + '' },
-      ],
-    });
-    const data = txIn.Messages[0].Data + '';
-    console.log(data);
-    return data;
-  } catch (error) {
-    console.log(error);
-    return {};
-  }
-}
-
-
 await getSchemaManagement();  
-
-await encryptIntegerValue(10);

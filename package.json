@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "@permaweb/aoconnect": "^0.0.59",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "fs": "^0.0.1-security"
   }
 }
