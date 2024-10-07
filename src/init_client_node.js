@@ -22,26 +22,62 @@ async function InitClientApi() {
         await loadClientApi();          
       } 
 
-      const processId = await spawn({
-        // The Arweave TXID of the ao Module
-        module: "GYrbbe0VbHim_7Hi6zrOpHQXrSQz07XNtwCnfbFo2I0",
-        // The Arweave wallet address of a Scheduler Unit
-        scheduler: "_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA",
-        // A signer function containing your wallet
-        signer: createDataItemSigner(wallet),
-        /*
-          Refer to a Processes' source code or documentation
-          for tags that may effect its computation.
-        */
-        tags: [
-          { name: "Client_API", value: "v1.0" },
-          { name: "Name", value: "survey-sync" },
-        ],
-      });
+      const processId = await spawnClientNode();
       console.log('processId', processId);      
-      const messageId =  await register(processId, "test_"+processId);
+      const messageId =  await register(processId, "test_" + processId);
       console.log('messageId', messageId);
+      const survey_id = await testLoadClientSurvey(processId);
+      await testLoadClientSurveyById(processId, "1");
     //   await getNodeScripts();
+}
+
+async function testLoadClientSurvey(processId) {
+  const survey_test = fs.readFileSync('./src/example/survey.test.json', 'utf-8');
+  console.log(survey_test);
+  const data = JSON.stringify(survey_test);
+  const messageId = await message({
+      process: processId,
+      signer: createDataItemSigner(wallet),
+      // the survey as stringified JSON
+      data: data,
+      tags: [{ name: 'Action', value: 'CreateSurvey' }],
+  });
+
+  console.log(messageId);
+  
+}
+
+async function testLoadClientSurveyById(processId, survey_id) {
+  const txSurveyData =  await dryrun({
+    process: processId,
+    tags: [
+        { name: 'Action', value: 'GetSurveyDetails' },
+        { name: 'survey_id', value: survey_id },
+    ],
+  });
+  if(txSurveyData.Messages.length > 0) {
+    console.log(txSurveyData.Messages[0].Data);
+  }
+}
+
+
+async function spawnClientNode() {
+  return await spawn({
+    // The Arweave TXID of the ao Module
+    module: "GYrbbe0VbHim_7Hi6zrOpHQXrSQz07XNtwCnfbFo2I0",
+    // The Arweave wallet address of a Scheduler Unit
+    scheduler: "_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA",
+    // A signer function containing your wallet
+    signer: createDataItemSigner(wallet),
+    /*
+      Refer to a Processes' source code or documentation
+      for tags that may effect its computation.
+    */
+    tags: [
+      { name: "Client_API", value: "v1.0" },
+      { name: "Name", value: "survey-sync" },
+    ],
+  });
 }
 
 async function loadClientApi() {

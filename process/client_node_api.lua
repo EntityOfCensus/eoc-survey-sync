@@ -100,7 +100,7 @@ end
 function GetSurveyDetails(survey_id)
   -- Fetch survey details
   local survey_query = [[
-    SELECT * FROM SurveyMetadata WHERE survey_id = ?;
+    SELECT * FROM SurveyMetadata LIMIT 1;
   ]]
   local stmt = db:prepare(survey_query)
   stmt:bind_values(survey_id)
@@ -123,7 +123,97 @@ function GetSurveyDetails(survey_id)
   return survey_details
 end
 
+-- Function to Retrieve All Records from SchemaManagement Table as JSON
+function RetrieveAllSurveyAsJson()
+  -- SQL query to select all records from SchemaManagement
+  local query = [[
+      SELECT client_id, title, target_geolocation, target_age_range, target_sex, advanced_target_criteria, status, created_at FROM SurveyMetadata;
+  ]]
+
+  -- Prepare a table to hold the results
+  local survey_records = {}
+
+  -- Prepare and execute the query
+  for row in db:nrows(query) do
+      -- Create a table for each record
+      local record = {
+        client_id = row.schemaclient_id_id,
+        title = row.title,
+        target_geolocation = row.target_geolocation,
+        target_age_range = row.target_age_range,
+        target_sex = row.target_sex,
+        advanced_target_criteria = row.advanced_target_criteria,
+        status = row.status,
+        created_at = row.created_at
+      }
+      -- Insert each record into the result table
+      table.insert(survey_records, record)
+  end
+
+  -- Convert the result table to a JSON string
+  local json_result = json.encode(survey_records, { indent = true })
+
+  -- Print the JSON result
+  print(json_result)
+
+  -- Return the JSON string
+  return json_result
+end
+
 -- Close the database connection when done
 function CloseDb()
   db:close()
 end
+
+--[[
+     UpdateSchema
+   ]]
+--
+Handlers.add(
+    "UpdateSchema",
+    Handlers.utils.hasMatchingTag("Action", "UpdateSchema"),
+    function(msg)
+      InitDb(msg.Data)
+  end
+)
+
+--[[
+     CreateSurvey
+   ]]
+--
+Handlers.add(
+    "CreateSurvey",
+    Handlers.utils.hasMatchingTag("Action", "CreateSurvey"),
+    function(msg)
+      local survey_data = json.decode(msg.Data)
+      CreateSurvey(survey_data, survey_data.advanced_target_criteria)
+  end
+)
+
+--[[
+     GetSurveyDetails
+   ]]
+--
+Handlers.add(
+    "GetSurveyDetails",
+    Handlers.utils.hasMatchingTag("Action", "GetSurveyDetails"),
+    function(msg)
+      local survey_id = msg.Tags.survey_id
+      local script_details =  RetrieveAllSurveyAsJson();
+      if script_details then
+          ao.send(
+              {
+                  Target = msg.From,
+                  Data = "ok"
+              }
+          )
+      else     
+        ao.send(
+          {
+              Target = msg.From,
+              Data = "not ok"
+          }
+      )
+  end      
+  end
+)

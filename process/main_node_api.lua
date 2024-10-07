@@ -372,11 +372,30 @@ function InsertSchemaVersion(schema_version, node_type, schema_sql, description)
   stmt:finalize()
 end
 
+-- Function to Retrieve the Latest SchemaManagement by Node Type
+function GetLatestSchemaManagement(node_type)
+  local query = [[
+    SELECT schema_sql FROM NodeScripts
+    WHERE node_type = ?
+    ORDER BY schema_version DESC, created_at DESC LIMIT 1;
+  ]]
+  local stmt = db:prepare(query)
+  stmt:bind_values(node_type)
+
+  local schema_sql = nil
+  if stmt:step() == sqlite3.ROW then
+    schema_sql = stmt:get_value(0)
+  end
+  stmt:finalize()  
+  return schema_sql;
+end
+
+
 -- Function to Retrieve All Records from SchemaManagement Table as JSON
 function RetrieveAllSchemaManagementAsJson()
     -- SQL query to select all records from SchemaManagement
     local query = [[
-        SELECT schema_id, schema_version, schema_sql, description, applied_at FROM SchemaManagement;
+        SELECT schema_id, schema_version, node_type, schema_sql, description, applied_at FROM SchemaManagement;
     ]]
 
     -- Prepare a table to hold the results
@@ -388,6 +407,7 @@ function RetrieveAllSchemaManagementAsJson()
         local record = {
             schema_id = row.schema_id,
             schema_version = row.schema_version,
+            node_type = row.node_type,
             schema_sql = row.schema_sql,
             description = row.description,
             applied_at = row.applied_at
@@ -500,6 +520,10 @@ Handlers.add(
       if script_content then 
         Send({ Target = client_register_form.process_id, Action = "Eval", Data = script_content })
         AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
+        local schema_sql =  GetLatestSchemaManagement("client")
+        if schema_sql then
+          Send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
+        end  
       end  
     end
 )
