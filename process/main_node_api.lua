@@ -375,9 +375,9 @@ end
 -- Function to Retrieve the Latest SchemaManagement by Node Type
 function GetLatestSchemaManagement(node_type)
   local query = [[
-    SELECT schema_sql FROM NodeScripts
+    SELECT schema_sql FROM SchemaManagement
     WHERE node_type = ?
-    ORDER BY schema_version DESC, created_at DESC LIMIT 1;
+    ORDER BY schema_version DESC, applied_at DESC LIMIT 1;
   ]]
   local stmt = db:prepare(query)
   stmt:bind_values(node_type)
@@ -515,15 +515,51 @@ Handlers.add(
     "RegisterClient",
     Handlers.utils.hasMatchingTag("Action", "RegisterClient"),
     function(msg)
-      local client_register_form = json.decode(msg.Data)
+      -- Spawn('GYrbbe0VbHim_7Hi6zrOpHQXrSQz07XNtwCnfbFo2I0', { Data = "Hello SQLite Wasm64" })
+
+      -- local client_register_form = json.decode(msg.Data)
       local script_content =  GetLatestNodeScript("client")
       if script_content then 
-        Send({ Target = client_register_form.process_id, Action = "Eval", Data = script_content })
-        AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
-        local schema_sql =  GetLatestSchemaManagement("client")
-        if schema_sql then
-          Send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
-        end  
+        ao.send({ Target = client_register_form.process_id, Action = "Eval", Data = script_content })
+      --   AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
+      --   local schema_sql =  GetLatestSchemaManagement("client")
+      --   if schema_sql then
+      --     ao.send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
+      --   end  
+      ao.send({
+                  Target = msg.From,
+                  Data = script_content
+              })
+      end
+    end
+)
+
+--[[
+     RegisterClientSchema
+   ]]
+--
+Handlers.add(
+    "RegisterClientSchema",
+    Handlers.utils.hasMatchingTag("Action", "RegisterClientSchema"),
+    function(msg)
+      -- local client_register_form = json.decode(msg.Data)
+      local schema_sql =  GetLatestSchemaManagement("client")
+      if schema_sql then
+        -- Send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
+        ao.send(
+          {
+              Target = msg.From,
+              Data = schema_sql
+          }
+      )
+  else     
+    ao.send(
+      {
+          Target = msg.From,
+          Data = "not ok"
+      }
+  )
+
       end  
     end
 )
