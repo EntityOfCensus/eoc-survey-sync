@@ -55,8 +55,7 @@ SURVEY_METADATA = [[
     target_sex TEXT,
     advanced_target_criteria TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'draft',
-    FOREIGN KEY (client_id) REFERENCES Clients(client_id)
+    status TEXT DEFAULT 'draft'
   );
 ]]
 
@@ -184,10 +183,10 @@ function InitDb()
   db:exec(STANDARD_ANSWER_OPTIONS)
   db:exec(AUDIT_LOG)
 
-  local initial_main_schema_sql = NODE_SCRIPTS .. CLIENTS .. RESPONDENTS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. SURVEY_METADATA .. AUDIT_LOG
+  local initial_main_schema_sql = NODE_SCRIPTS .. CLIENTS .. RESPONDENTS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. AUDIT_LOG
   InsertSchemaVersion("v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
 
-  local initial_client_schema_sql = CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS
+  local initial_client_schema_sql = SURVEY_METADATA .. CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS
   InsertSchemaVersion("v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
 
   local initial_respondent_schema_sql = RESPONDENT_QUESTIONNAIRE_ANSWERS .. SURVEY_RESPONSES
@@ -475,12 +474,12 @@ Handlers.add(
     "GetSchemaManagement",
     Handlers.utils.hasMatchingTag("Action", "GetSchemaManagement"),
     function(msg)
-        local schema_management_records =  RetrieveAllSchemaManagementAsJson();
-        if schema_management_records then
+        local schema_management_sql =  GetLatestSchemaManagement(msg.Tags.node_type);
+        if schema_management_sql then
             ao.send(
                 {
                     Target = msg.From,
-                    Data = schema_management_records
+                    Data = schema_management_sql
                 }
             )
         end
@@ -515,22 +514,12 @@ Handlers.add(
     "RegisterClient",
     Handlers.utils.hasMatchingTag("Action", "RegisterClient"),
     function(msg)
-      -- Spawn('GYrbbe0VbHim_7Hi6zrOpHQXrSQz07XNtwCnfbFo2I0', { Data = "Hello SQLite Wasm64" })
-
-      -- local client_register_form = json.decode(msg.Data)
-      local script_content =  GetLatestNodeScript("client")
-      if script_content then 
-        ao.send({ Target = client_register_form.process_id, Action = "Eval", Data = script_content })
-      --   AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
-      --   local schema_sql =  GetLatestSchemaManagement("client")
-      --   if schema_sql then
-      --     ao.send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
-      --   end  
-      ao.send({
-                  Target = msg.From,
-                  Data = script_content
-              })
-      end
+      local client_register_form = json.decode(msg.Data)
+      -- local schema_sql =  GetLatestSchemaManagement("client")
+      AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
+      -- if schema_sql then
+      --   ao.send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
+      -- end  
     end
 )
 

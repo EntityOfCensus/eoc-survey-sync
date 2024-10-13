@@ -10,6 +10,7 @@ import fs from 'fs';
 
 dotenv.config();
 
+
 const wallet = JSON.parse(process.env.JWK);
 const MAIN_NODE_ID = process.env.MAIN_NODE_ID
 
@@ -23,29 +24,45 @@ await InitClientApi();
 // await testLoadClientSurveyById("lgpdiT8p6qBYje9M02fyMfCZttRVoMDJsaxFCF4d1kA", "1")
 
 async function InitClientApi() {
-    const txMainNodeReady = await canRegister();
-      if(txMainNodeReady.Messages.length == 0) {
-        await loadClientApi();          
-      } 
+  const processId = await spawnClientNode();
+  const txMainNodeReady = await canRegister();
+  if(txMainNodeReady.Messages.length == 0) {
+    await loadClientApi(processId);          
+  } else if (txMainNodeReady.Messages[0].Data == "Ok") {
+    await evalClientApi(processId);
+  }
+}
 
-      const processId = await spawnClientNode();
-      console.log('processId', processId);      
-      const messageId =  await register(processId, "test_" + processId);
-      // console.log('messageId', messageId);
-      // const survey_id = await testLoadClientSurvey(processId);
-      // await testLoadClientSurveyById(processId, "1");
+async function RegisterClientApi(processId) {
+  await getNodeScripts();
+
+  console.log('processId', processId);      
+  const messageId =  await register(processId, "test_" + processId);
+
+  const txIn = await dryrun({
+    process: processId,
+    tags: [
+      { name: 'Action', value: 'GetSurveyDetails' },
+      { name: 'survey_id', value: "1" },
+    ],
+  });
+
+
+      console.log('txIn', txIn);
+      const survey_id = await testLoadClientSurvey(processId);
+      await testLoadClientSurveyById(processId, "1");
     //   await getNodeScripts();
 }
+
 
 async function testLoadClientSurvey(processId) {
   const survey_test = fs.readFileSync('./src/example/survey.test.json', 'utf-8');
   console.log(survey_test);
-  const data = JSON.stringify(survey_test);
   const messageId = await dryrun({
       process: processId,
       signer: createDataItemSigner(wallet),
       // the survey as stringified JSON
-      data: data,
+      data: survey_test,
       tags: [{ name: 'Action', value: 'CreateSurvey' }],
   });
 
@@ -88,17 +105,15 @@ async function spawnClientNode() {
   });
 }
 
-async function loadClientApi() {
-    const code = fs.readFileSync('./process/client_node_api.lua', 'utf-8');
-    console.log(code);
+async function loadClientApi(processId) {
     const clientApi = {
         node_type: "client",
         script_name: "client_node_api.lua",
         script_version: "v1.0",
-        script_content: code
+        script_content: await evalClientApi(processId)
     };
     const data = JSON.stringify(clientApi);
-    const messageId = await message({
+    const loadApiMessageId = await message({
         process: MAIN_NODE_ID,
         signer: createDataItemSigner(wallet),
         // the survey as stringified JSON
@@ -106,7 +121,23 @@ async function loadClientApi() {
         tags: [{ name: 'Action', value: 'LoadApi' }],
     });
 
-    console.log(messageId);
+    console.log(loadApiMessageId);
+}
+
+async function evalClientApi(processId) {
+  const code = fs.readFileSync('./process/client_node_api.lua', 'utf-8');
+  console.log(code);
+  setTimeout(async function (){
+    await message({
+      process: processId,
+      signer: createDataItemSigner(wallet),
+      // the survey as stringified JSON
+      data: code,
+      tags: [{ name: 'Action', value: 'Eval' }],
+    });  
+    await RegisterClientApi(processId);
+  } , 3000);
+  return code;
 }
 
 async function canRegister() {
@@ -120,34 +151,27 @@ async function canRegister() {
 }
 
 async function register(processId, name) {
-    const message_Id = await dryrun({
-        process: MAIN_NODE_ID,
-        // signer: createDataItemSigner(wallet),
-        // // // the survey as stringified JSON
-        // data: JSON.stringify({process_id: processId, name: name}),
-        tags: [
-            { name: 'Action', value: 'RegisterClient' },
-        ],
-    });
-    const message_Id1 = await message({
+  const message_Id = await message({
+    process: MAIN_NODE_ID,
+    signer: createDataItemSigner(wallet),
+    data: JSON.stringify({process_id: processId, name: name}),
+    tags: [
+        { name: 'Action', value: 'RegisterClient' },
+    ],
+  });
+  const schemaSql=  await getSchemaManagement();
+  if(schemaSql) {
+    const updateSchemaMessageId = await message({
       process: processId,
       signer: createDataItemSigner(wallet),
-      // // the survey as stringified JSON
-      data: message_Id.Messages[0].Data,
+      data: schemaSql,
       tags: [
-          { name: 'Action', value: 'Eval' },
+          { name: 'Action', value: 'UpdateSchema' },
       ],
-  });
-const tx=  await dryrun({
-      process: processId,
-      // signer: createDataItemSigner(wallet),
-      // // the survey as stringified JSON
-      // data: JSON.stringify({process_id: processId}),
-      tags: [
-          { name: 'Action', value: 'GetSurveyDetails' },
-      ],
-  });
-    return message_Id;
+    });
+    console.log('updateSchemaMessageId', updateSchemaMessageId);
+  }
+return message_Id;
 }
 
 async function register2() {
@@ -187,6 +211,7 @@ async function getSchemaManagement() {
         process: MAIN_NODE_ID,
         tags: [
           { name: 'Action', value: 'GetSchemaManagement' },
+          { name: 'node_type', value: "client" },
         ],
       });
       const data = txIn.Messages[0].Data + '';
@@ -194,6 +219,6 @@ async function getSchemaManagement() {
       return data;
     } catch (error) {
       console.log(error);
-      return {};
+      return null;
     }
 }
