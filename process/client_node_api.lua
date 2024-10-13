@@ -41,17 +41,17 @@ function CreateSurvey(survey_data, target_criteria)
   -- Get survey ID for further operations
   local survey_id = db:last_insert_rowid()
 
-  -- -- Insert categories for the survey
-  -- for _, category in ipairs(survey_data.categories) do
-  --   local insert_category = [[
-  --     INSERT INTO ClientCategories (survey_id, standard_category_id)
-  --     VALUES (?, ?);
-  --   ]]
-  --   local category_stmt = db:prepare(insert_category)
-  --   category_stmt:bind_values(survey_id, category.standard_category_id)
-  --   category_stmt:step()
-  --   category_stmt:finalize()
-  -- end
+  -- Insert categories for the survey
+  for _, category in ipairs(survey_data.categories) do
+    local insert_category = [[
+      INSERT INTO ClientCategories (survey_id, standard_category_id)
+      VALUES (?, ?);
+    ]]
+    local category_stmt = db:prepare(insert_category)
+    category_stmt:bind_values(survey_id, category.standard_category_id)
+    category_stmt:step()
+    category_stmt:finalize()
+  end
 
   -- -- Insert questions for the survey
   -- for _, question in ipairs(survey_data.questions) do
@@ -150,7 +150,6 @@ function RetrieveAllSurveyAsJson()
         status = row.status,
         created_at = row.created_at
       }
-      print("record: " .. record)
       -- Insert each record into the result table
       table.insert(survey_records, record)
   end
@@ -196,24 +195,15 @@ Handlers.add(
     "CreateSurvey",
     Handlers.utils.hasMatchingTag("Action", "CreateSurvey"),
     function(msg)
-      local survey = {
-        client_id = 123,
-        title = "Customer Satisfaction Survey",
-        target_geolocation = "North America",
-        target_age_range =  "18-45",
-        target_sex = "all",
-        advanced_target_criteria = "{'employment_status': 'employed', 'education_level': 'college' }"
-      }
-      
-      -- local survey_data = json.decode(msg.Data)
-      -- if(survey_data) then
-      survey.survey_id = CreateSurvey(survey, survey.advanced_target_criteria)
+      local survey_data = json.decode(msg.Data)
+      if(survey_data) then
+        survey_data.survey_id = CreateSurvey(survey_data, json.encode(survey_data.advanced_target_criteria))
         ao.send(
           {
               Target = msg.From,
-              Data = json.encode(survey)
+              Data = json.encode(survey_data)
           })
-      -- end
+      end
 end
 )
 
@@ -226,21 +216,14 @@ Handlers.add(
     Handlers.utils.hasMatchingTag("Action", "GetSurveyDetails"),
     function(msg)
       local survey_id = msg.Tags.survey_id
-      local script_details =  RetrieveAllSurveyAsJson();
+      local script_details =  GetSurveyDetails(survey_id);
       if script_details then
           ao.send(
               {
                   Target = msg.From,
                   Data = script_details
               }
-          )
-      else     
-        ao.send(
-          {
-              Target = msg.From,
-              Data = "not ok"
-          }
-      )
-  end      
+          )     
+      end      
   end
 )

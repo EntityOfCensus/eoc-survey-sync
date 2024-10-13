@@ -58,7 +58,7 @@ async function RegisterClientApi(processId) {
 async function testLoadClientSurvey(processId) {
   const survey_test = fs.readFileSync('./src/example/survey.test.json', 'utf-8');
   console.log(survey_test);
-  const messageId = await dryrun({
+  const messageId = await message({
       process: processId,
       signer: createDataItemSigner(wallet),
       // the survey as stringified JSON
@@ -136,7 +136,7 @@ async function evalClientApi(processId) {
       tags: [{ name: 'Action', value: 'Eval' }],
     });  
     await RegisterClientApi(processId);
-  } , 3000);
+  } , 2000);
   return code;
 }
 

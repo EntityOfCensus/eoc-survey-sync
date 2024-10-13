@@ -7,6 +7,66 @@
     "advanced_target_criteria": {
       "employment_status": "employed",
       "education_level": "college"
-    }
+    },
+    "categories": [
+      {
+        "category_name": "Product Satisfaction",
+        "questions": [
+          {
+            "question_text": "How satisfied are you with our product?",
+            "question_type": "multiple-choice",
+            "answer_options": [
+              "Very Satisfied",
+              "Satisfied",
+              "Neutral",
+              "Dissatisfied",
+              "Very Dissatisfied"
+            ]
+          },
+          {
+            "question_text": "Would you recommend our product to others?",
+            "question_type": "single-choice",
+            "answer_options": [
+              "Yes",
+              "No"
+            ]
+          }
+        ]
+      },
+      {
+        "category_name": "Customer Service Experience",
+        "questions": [
+          {
+            "question_text": "How would you rate the quality of customer service you received?",
+            "question_type": "multiple-choice",
+            "answer_options": [
+              "Excellent",
+              "Good",
+              "Average",
+              "Poor",
+              "Very Poor"
+            ]
+          },
+          {
+            "question_text": "Was your issue resolved in a timely manner?",
+            "question_type": "single-choice",
+            "answer_options": [
+              "Yes",
+              "No"
+            ]
+          }
+        ]
+      },
+      {
+        "category_name": "Suggestions for Improvement",
+        "questions": [
+          {
+            "question_text": "What areas do you think we can improve?",
+            "question_type": "open-ended",
+            "answer_options": []
+          }
+        ]
+      }
+    ]
   }
   
