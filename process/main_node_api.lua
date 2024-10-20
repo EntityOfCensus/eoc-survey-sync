@@ -239,13 +239,13 @@ FORM_SUBMISSIONS = [[
 function InitDb()
   local initial_main_schema_sql = NODES .. CLIENTS .. TOOLS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. ADVANCED_TARGET_GROUP_CRITERIA .. RESPONDENTS .. RESPONDENT_TOOLS .. SCHEMA_MANAGEMENT .. NODE_SCRIPTS
   db:exec(initial_main_schema_sql)
-  InsertSchemaVersion("init_main_node", "v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
+  InsertSchemaManagement("init_main_node", "v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
 
   local initial_client_schema_sql = CLIENT_TOOL_INSTANCES .. CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS .. CLIENT_RESPONSES
-  InsertSchemaVersion("init_client_node", "v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
+  InsertSchemaManagement("init_client_node", "v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
 
   local initial_respondent_schema_sql = RESPONDENT_ANSWERS .. VOTING_RECORDS .. FORM_SUBMISSIONS
-  InsertSchemaVersion("init_respondent_node", "v1.0", "respondent", initial_respondent_schema_sql, "Initial schema for respondent AO process")
+  InsertSchemaManagement("init_respondent_node", "v1.0", "respondent", initial_respondent_schema_sql, "Initial schema for respondent AO process")
    
 end
 
@@ -434,6 +434,40 @@ function InsertNodeScript(script_id, node_type, script_name, script_version, scr
   end
 end
 
+InitDb()
+
+-- Function to get the latest node script by node_type
+function GetLatestNodeScript(node_type)
+  -- Query to get the latest script for the given node_type by the latest version
+  local stmt = db:prepare([[
+      SELECT script_id, script_name, script_version, script_content 
+      FROM NodeScripts 
+      WHERE node_type = ?
+      ORDER BY script_version DESC
+      LIMIT 1
+  ]])
+  stmt:bind_values(node_type)
+  local result = stmt:step()
+
+  -- Initialize the script data structure
+  local script_data = {}
+
+  -- If a result is found, populate the script_data table
+  if result == sqlite3.ROW then
+      script_data = {
+          script_id = stmt:get_value(0),
+          script_name = stmt:get_value(1),
+          script_version = stmt:get_value(2),
+          script_content = stmt:get_value(3)
+      }
+  end
+
+  stmt:finalize()
+
+  -- Return the script data if found, or return nil
+  return script_data
+end
+
 -- Handler Definitions
 
 -- Define the InsertNodeScript handler
@@ -458,6 +492,32 @@ Handlers.add(
             Target = msg.From,
             Data = result
         })
+    end
+)
+
+-- Define the GetLatestNodeScript handler
+Handlers.add(
+    "GetLatestNodeScript",
+    Handlers.utils.hasMatchingTag("Action", "GetLatestNodeScript"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local script_request = json.decode(msg.Data)
+
+        -- Call the GetLatestNodeScript function to fetch the latest script
+        local script_data = GetLatestNodeScript(script_request.node_type)
+
+        -- If a script is found, send it back; otherwise, send an error message
+        if script_data and next(script_data) then
+            ao.send({
+                Target = msg.From,
+                Data = json.encode(script_data)
+            })
+        else
+            ao.send({
+                Target = msg.From,
+                Data = "No script found for node_type: " .. script_request.node_type
+            })
+        end
     end
 )
 
@@ -594,7 +654,7 @@ Handlers.add(
   "GetLatestSchemaManagement",
   Handlers.utils.hasMatchingTag("Action", "GetLatestSchemaManagement"),
   function(msg)
-      local node_type = msg.Data.node_type
+      local node_type = json.decode(msg.Data).node_type
       local schema = GetLatestSchemaManagement(node_type)
       ao.send({ Target = msg.From, Data = json.encode(schema) })
   end
