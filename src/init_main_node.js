@@ -81,5 +81,4 @@ async function getLatestSchemaManagement(node_type) {
         data: JSON.stringify(data),
         tags: [{ name: 'Action', value: 'GetLatestSchemaManagement' }],
     });
-
 }

@@ -10,6 +10,12 @@ local db = db or sqlite3.open_memory()
 
 -- Utility Functions
 
+-- Function to Initialize the Database
+function InitDb(schema_sql)
+  db:exec(schema_sql)
+  return "Script executed"
+end
+
 -- Function to insert a respondent's answer
 function InsertRespondentAnswer(response_id, client_question_id, selected_option_id, answer_text)
     local stmt = db:prepare([[
@@ -96,6 +102,21 @@ function InsertFormSubmission(respondent_id, instance_id, client_category_id, su
 end
 
 -- Handler Definitions
+
+-- InitDb Handler
+Handlers.add(
+    "InitDb",
+    Handlers.utils.hasMatchingTag("Action", "InitDb"),
+    function(msg)
+        local resutl = InitDb(msg.Data)
+        ao.send(
+            {
+                Target = msg.From,
+                Data = result
+            }
+        )
+    end
+)
 
 -- SubmitResponse Handler: Insert respondent's answer
 Handlers.add(

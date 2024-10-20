@@ -8,6 +8,12 @@ local sqlite3 = require("lsqlite3")
 -- Open the database
 local db = db or sqlite3.open_memory()
 
+-- Function to Initialize the Database
+function InitDb(schema_sql)
+  db:exec(schema_sql)
+  return "Script executed"
+end
+
 -- Utility Functions
 function InsertToolInstance(client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
     -- SQL Insert into ClientToolInstances table
@@ -214,6 +220,21 @@ function GetPaginatedToolInstances(page, page_size)
 end
 
 -- Handler Definitions
+
+-- InitDb Handler
+Handlers.add(
+    "InitDb",
+    Handlers.utils.hasMatchingTag("Action", "InitDb"),
+    function(msg)
+        local resutl = InitDb(msg.Data)
+        ao.send(
+            {
+                Target = msg.From,
+                Data = result
+            }
+        )
+    end
+)
 
 -- GetInstanceIdByNameAndToolId Handler
 Handlers.add(

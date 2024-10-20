@@ -251,6 +251,19 @@ end
 
 -- Utility Functions
 
+function InsertNode(node_id, node_type, node_status, node_version)
+  -- Insert the node information into the Nodes table
+  local stmt = db:prepare([[
+      INSERT INTO Nodes (node_id, node_type, node_status, node_version) 
+      VALUES (?, ?, ?, ?)
+  ]])
+  stmt:bind_values(node_id, node_type, node_status, node_version)
+  stmt:step()
+  stmt:finalize()
+
+  return "Node inserted"
+end
+
 -- Function to insert a new client
 function InsertClient(client_id, node_id, client_name, schema_version)
   local stmt = db:prepare([[
@@ -280,6 +293,99 @@ function DeleteClient(client_id)
   stmt:bind_values(client_id)
   stmt:step()
   stmt:finalize()
+end
+
+-- Function to get a client by client_id
+function GetClientById(client_id)
+  local stmt = db:prepare([[
+      SELECT client_id, node_id, client_name, schema_version, created_at 
+      FROM Clients 
+      WHERE client_id = ?
+  ]])
+  stmt:bind_values(client_id)
+  local result = stmt:step()
+
+  -- Initialize client data structure
+  local client_data = {}
+
+  -- If a result is found, populate the client_data table
+  if result == sqlite3.ROW then
+      client_data = {
+          client_id = stmt:get_value(0),
+          node_id = stmt:get_value(1),
+          client_name = stmt:get_value(2),
+          schema_version = stmt:get_value(3),
+          created_at = stmt:get_value(4)
+      }
+  end
+
+  stmt:finalize()
+
+  -- Return the client data if found, otherwise return nil
+  return client_data
+end
+
+-- Function to insert a new respondent
+function InsertRespondent(respondent_id, node_id, respondent_name, age, sex, geolocation, email, schema_version)
+  local stmt = db:prepare([[
+      INSERT INTO Respondents (respondent_id, node_id, respondent_name, age, sex, geolocation, email, schema_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ]])
+  stmt:bind_values(respondent_id, node_id, respondent_name, age, sex, geolocation, email, schema_version)
+  stmt:step()
+  stmt:finalize()
+  return "Respondent inserted"
+end
+
+-- Function to update an existing respondent
+function UpdateRespondent(respondent_id, respondent_name, age, sex, geolocation, email, schema_version)
+  local stmt = db:prepare([[
+      UPDATE Respondents
+      SET respondent_name = ?, age = ?, sex = ?, geolocation = ?, email = ?, schema_version = ?
+      WHERE respondent_id = ?
+  ]])
+  stmt:bind_values(respondent_name, age, sex, geolocation, email, schema_version, respondent_id)
+  stmt:step()
+  stmt:finalize()
+  return "Respondent updated"
+end
+
+-- Function to delete a respondent
+function DeleteRespondent(respondent_id)
+  local stmt = db:prepare([[ DELETE FROM Respondents WHERE respondent_id = ? ]])
+  stmt:bind_values(respondent_id)
+  stmt:step()
+  stmt:finalize()
+  return "Respondent deleted"
+end
+
+-- Function to get a respondent by respondent_id
+function GetRespondentById(respondent_id)
+  local stmt = db:prepare([[
+      SELECT respondent_id, node_id, respondent_name, age, sex, geolocation, email, schema_version, created_at
+      FROM Respondents
+      WHERE respondent_id = ?
+  ]])
+  stmt:bind_values(respondent_id)
+  local result = stmt:step()
+
+  local respondent_data = {}
+  if result == sqlite3.ROW then
+      respondent_data = {
+          respondent_id = stmt:get_value(0),
+          node_id = stmt:get_value(1),
+          respondent_name = stmt:get_value(2),
+          age = stmt:get_value(3),
+          sex = stmt:get_value(4),
+          geolocation = stmt:get_value(5),
+          email = stmt:get_value(6),
+          schema_version = stmt:get_value(7),
+          created_at = stmt:get_value(8)
+      }
+  end
+
+  stmt:finalize()
+  return respondent_data
 end
 
 -- Function to insert a new tool
@@ -434,8 +540,6 @@ function InsertNodeScript(script_id, node_type, script_name, script_version, scr
   end
 end
 
-InitDb()
-
 -- Function to get the latest node script by node_type
 function GetLatestNodeScript(node_type)
   -- Query to get the latest script for the given node_type by the latest version
@@ -467,6 +571,8 @@ function GetLatestNodeScript(node_type)
   -- Return the script data if found, or return nil
   return script_data
 end
+
+InitDb()
 
 -- Handler Definitions
 
@@ -521,20 +627,37 @@ Handlers.add(
     end
 )
 
--- CreateClient Handler: Insert a new client
+-- Define the CreateClient action handler
 Handlers.add(
-  "CreateClient",
-  Handlers.utils.hasMatchingTag("Action", "CreateClient"),
-  function(msg)
-      local client_data = json.decode(msg.Data)
-      InsertClient(
-          client_data.client_id,
-          client_data.node_id,
-          client_data.client_name,
-          client_data.schema_version
-      )
-      ao.send({ Target = msg.From, Data = "Client created" })
-  end
+    "CreateClient",
+    Handlers.utils.hasMatchingTag("Action", "CreateClient"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local client_data = json.decode(msg.Data)
+
+        -- Insert a new node record for the client
+        local node_id = client_data.node_id
+        local node_type = "client"
+        local node_status = "active"
+        local node_version = client_data.schema_version
+
+        -- Insert the node into the Nodes table
+        InsertNode(node_id, node_type, node_status, node_version)
+
+        -- Insert the client into the Clients table
+        InsertClient(
+            client_data.client_id,
+            node_id,
+            client_data.client_name,
+            client_data.schema_version
+        )
+
+        -- Send a response back to the caller
+        ao.send({
+            Target = msg.From,
+            Data = "Client and Node inserted successfully"
+        })
+    end
 )
 
 -- UpdateClient Handler: Update client details
@@ -561,6 +684,141 @@ Handlers.add(
       DeleteClient(client_id)
       ao.send({ Target = msg.From, Data = "Client deleted" })
   end
+)
+
+-- Define the GetClientById handler
+Handlers.add(
+    "GetClientById",
+    Handlers.utils.hasMatchingTag("Action", "GetClientById"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local client_request = json.decode(msg.Data)
+
+        -- Call the GetClientById function to retrieve the client data
+        local client_data = GetClientById(client_request.client_id)
+
+        -- If client data is found, send it back; otherwise, send an error message
+        if client_data and next(client_data) then
+            ao.send({
+                Target = msg.From,
+                Data = json.encode(client_data)
+            })
+        else
+            ao.send({
+                Target = msg.From,
+                Data = "No client found for client_id: " .. client_request.client_id
+            })
+        end
+    end
+)
+
+-- CreateRespondent Handler: Insert a new respondent and its associated node
+Handlers.add(
+    "CreateRespondent",
+    Handlers.utils.hasMatchingTag("Action", "CreateRespondent"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local respondent_data = json.decode(msg.Data)
+
+        -- Insert a new node for the respondent
+        local node_id = respondent_data.node_id
+        local node_type = "respondent"
+        local node_status = "active"
+        local node_version = respondent_data.schema_version
+
+        -- Insert the respondent node
+        InsertNode(node_id, node_type, node_status, node_version)
+
+        -- Insert the respondent into the Respondents table
+        InsertRespondent(
+            respondent_data.respondent_id,
+            node_id,
+            respondent_data.respondent_name,
+            respondent_data.age,
+            respondent_data.sex,
+            respondent_data.geolocation,
+            respondent_data.email,
+            respondent_data.schema_version
+        )
+
+        -- Send a response back to the caller
+        ao.send({
+            Target = msg.From,
+            Data = "Respondent and Node inserted successfully"
+        })
+    end
+)
+
+-- UpdateRespondent Handler: Update respondent details
+Handlers.add(
+    "UpdateRespondent",
+    Handlers.utils.hasMatchingTag("Action", "UpdateRespondent"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local respondent_data = json.decode(msg.Data)
+
+        -- Update the respondent in the Respondents table
+        local result = UpdateRespondent(
+            respondent_data.respondent_id,
+            respondent_data.respondent_name,
+            respondent_data.age,
+            respondent_data.sex,
+            respondent_data.geolocation,
+            respondent_data.email,
+            respondent_data.schema_version
+        )
+
+        -- Send a response back to the caller
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
+    end
+)
+
+-- DeleteRespondent Handler: Delete a respondent
+Handlers.add(
+    "DeleteRespondent",
+    Handlers.utils.hasMatchingTag("Action", "DeleteRespondent"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local respondent_id = msg.Data.respondent_id
+
+        -- Delete the respondent from the Respondents table
+        local result = DeleteRespondent(respondent_id)
+
+        -- Send a response back to the caller
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
+    end
+)
+
+-- GetRespondentById Handler: Retrieve respondent details by respondent_id
+Handlers.add(
+    "GetRespondentById",
+    Handlers.utils.hasMatchingTag("Action", "GetRespondentById"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local respondent_id = json.decode(msg.Data).respondent_id
+
+        -- Retrieve the respondent data
+        local respondent_data = GetRespondentById(respondent_id)
+
+        -- If client data is found, send it back; otherwise, send an error message
+        if respondent_data and next(respondent_data) then
+          ao.send({
+              Target = msg.From,
+              Data = json.encode(respondent_data)
+          })
+        else
+            ao.send({
+                Target = msg.From,
+                Data = "No respondent found for respondent_id: " .. respondent_id
+            })
+        end
+    end
 )
 
 -- CreateTool Handler: Insert a new tool for a client
