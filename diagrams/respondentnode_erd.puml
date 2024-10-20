@@ -1,0 +1,43 @@
+@startuml
+skinparam linetype ortho
+
+package "Respondent Node" {
+    entity "RespondentAnswers" {
+        * answer_id : STRING <<PK>>          -- String ID
+        --
+        response_id : STRING NOT NULL        -- Link to ClientResponses (from Client Node)
+        client_question_id : STRING NOT NULL -- Link to ClientQuestions (from Client Node)
+        selected_option_id : STRING          -- Link to ClientAnswerOptions (from Client Node)
+        answer_text : TEXT
+        answered_at : DATETIME
+    }
+
+    entity "VotingRecords" {
+        * vote_id : STRING <<PK>>            -- String ID
+        --
+        respondent_id : STRING NOT NULL      -- Link to Respondents (from Main Node)
+        tool_id : STRING NOT NULL            -- Link to Tools (from Main Node)
+        selected_option_id : STRING          -- Link to ClientAnswerOptions (from Client Node)
+        voted_at : DATETIME
+    }
+
+    entity "FormSubmissions" {
+        * submission_id : STRING <<PK>>      -- String ID
+        --
+        respondent_id : STRING NOT NULL      -- Link to Respondents (from Main Node)
+        instance_id : STRING NOT NULL        -- Link to ClientToolInstances (from Client Node)
+        client_category_id : STRING          -- Link to ClientCategories (nullable)
+        submission_data : TEXT
+        submitted_at : DATETIME
+    }
+}
+
+' Relationships between Respondent Node Tables
+ClientResponses ||--o{ RespondentAnswers : "response_id"
+ClientQuestions ||--o{ RespondentAnswers : "client_question_id"
+ClientAnswerOptions ||--o{ RespondentAnswers : "selected_option_id"
+Respondents ||--o{ VotingRecords : "respondent_id"
+Tools ||--o{ VotingRecords : "tool_id"
+Respondents ||--o{ FormSubmissions : "respondent_id"
+ClientToolInstances ||--o{ FormSubmissions : "instance_id"
+@enduml

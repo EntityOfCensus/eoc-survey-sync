@@ -9,546 +9,593 @@ local sqlite3 = require("lsqlite3")
 -- Open the database
 local db = db or sqlite3.open_memory()
 
--- NodeScripts Table Definition with Versioning
-NODE_SCRIPTS = [[
-  CREATE TABLE IF NOT EXISTS NodeScripts (
-    script_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_type TEXT NOT NULL,          -- Specifies the node type: "client", "respondent"
-    script_name TEXT NOT NULL,        -- The name of the script file (e.g., "client_node.lua")
-    script_version TEXT NOT NULL,     -- Version identifier for the script (e.g., "v1.0")
-    script_content TEXT NOT NULL,     -- Stores the Lua code as a string
+-- Nodes Table Definition
+NODES = [[
+  CREATE TABLE IF NOT EXISTS Nodes (
+    node_id TEXT PRIMARY KEY,    -- String ID
+    node_type TEXT NOT NULL,     -- Type of node (main, client, respondent)
+    node_status TEXT NOT NULL,   -- Status of the node (e.g., active, inactive)
+    node_version TEXT NOT NULL,  -- Version of the node's schema
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
--- Schema Definitions
+-- Clients Table Definition
 CLIENTS = [[
   CREATE TABLE IF NOT EXISTS Clients (
-    client_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT PRIMARY KEY,    -- String ID
+    node_id TEXT NOT NULL,         -- Associated node ID (not enforced with a foreign key in distributed setup)
     client_name TEXT NOT NULL,
-    assigned_node_id TEXT NOT NULL,
     schema_version TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'active'
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
+-- Tools Table Definition
+TOOLS = [[
+  CREATE TABLE IF NOT EXISTS Tools (
+    tool_id TEXT PRIMARY KEY,      -- String ID
+    client_id TEXT NOT NULL,       -- Link to Clients (client_id), managed by the app
+    tool_type TEXT NOT NULL,       -- Tool type (e.g., "survey", "poll", etc.)
+    tool_name TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
+-- StandardCategories Table Definition
+STANDARD_CATEGORIES = [[
+  CREATE TABLE IF NOT EXISTS StandardCategories (
+    category_id TEXT PRIMARY KEY,  -- String ID
+    category_name TEXT NOT NULL,   -- Name of the category
+    tool_type TEXT NOT NULL,       -- Specifies which tool type (e.g., survey, form, poll) this category applies to
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
+-- StandardQuestions Table Definition
+STANDARD_QUESTIONS = [[
+  CREATE TABLE IF NOT EXISTS StandardQuestions (
+    question_id TEXT PRIMARY KEY,  -- String ID
+    category_id TEXT NOT NULL,     -- Link to StandardCategories (managed by app logic)
+    question_text TEXT NOT NULL,   -- The text of the standard question
+    question_type TEXT NOT NULL,   -- e.g., "multiple-choice", "single-choice", etc.
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
+-- StandardAnswerOptions Table Definition
+STANDARD_ANSWER_OPTIONS = [[
+  CREATE TABLE IF NOT EXISTS StandardAnswerOptions (
+    option_id TEXT PRIMARY KEY,    -- String ID
+    question_id TEXT NOT NULL,     -- Link to StandardQuestions (managed by app logic)
+    answer_text TEXT NOT NULL,     -- The text of the answer option
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
+-- AdvancedTargetGroupCriteria Table Definition
+ADVANCED_TARGET_GROUP_CRITERIA = [[
+  CREATE TABLE IF NOT EXISTS AdvancedTargetGroupCriteria (
+    criteria_id TEXT PRIMARY KEY,   -- String ID
+    tool_id TEXT NOT NULL,          -- Link to Tools (tool_id), managed by app logic
+    target_criteria TEXT NOT NULL,  -- Criteria for targeting (e.g., "age:18-25")
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+]]
+
+-- Respondents Table Definition
 RESPONDENTS = [[
   CREATE TABLE IF NOT EXISTS Respondents (
-    respondent_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    respondent_id TEXT PRIMARY KEY,   -- String ID
+    node_id TEXT NOT NULL,            -- Associated node ID (managed by app logic)
     respondent_name TEXT NOT NULL,
     age INTEGER,
     sex TEXT,
     geolocation TEXT,
-    assigned_node_id INTEGER,
+    email TEXT,
+    schema_version TEXT NOT NULL,     -- Track schema version for respondent
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
-SURVEY_METADATA = [[
-  CREATE TABLE IF NOT EXISTS SurveyMetadata (
-    survey_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id INTEGER,
-    title TEXT,
-    target_geolocation TEXT,
-    target_age_range TEXT,
-    target_sex TEXT,
-    advanced_target_criteria TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'draft'
+-- RespondentTools Table Definition
+RESPONDENT_TOOLS = [[
+  CREATE TABLE IF NOT EXISTS RespondentTools (
+    respondent_tool_id TEXT PRIMARY KEY,   -- String ID
+    respondent_id TEXT NOT NULL,           -- Link to Respondents (managed by app logic)
+    tool_id TEXT NOT NULL,                 -- Link to Tools (managed by app logic)
+    last_participation_date DATETIME,
+    participation_count INTEGER DEFAULT 0, -- Tracks how many times the respondent has participated
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
--- Schema Management Table Definition
+-- SchemaManagement Table Definition
 SCHEMA_MANAGEMENT = [[
   CREATE TABLE IF NOT EXISTS SchemaManagement (
-    schema_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    schema_version TEXT NOT NULL,
-    node_type TEXT NOT NULL,  -- Specifies the node type: "main", "client", "respondent"
-    schema_sql TEXT NOT NULL,
-    description TEXT,
+    schema_id TEXT PRIMARY KEY,     -- String ID
+    schema_version TEXT NOT NULL,   -- Version of the schema
+    node_type TEXT NOT NULL,        -- Type of node (e.g., "client", "respondent")
+    schema_sql TEXT NOT NULL,       -- SQL that defines the schema
+    description TEXT,               -- Description of the schema update
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
-STANDARD_CATEGORIES = [[
-  CREATE TABLE IF NOT EXISTS StandardCategories (
-    category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category_name TEXT NOT NULL UNIQUE,
-    description TEXT
+-- NodeScripts Table Definition
+NODE_SCRIPTS = [[
+  CREATE TABLE IF NOT EXISTS NodeScripts (
+    script_id TEXT PRIMARY KEY,    -- String ID
+    node_type TEXT NOT NULL,       -- Node type (client/respondent)
+    script_name TEXT NOT NULL,     -- Name of the script
+    script_version TEXT NOT NULL,  -- Version of the script
+    script_content TEXT NOT NULL,  -- The Lua script content
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
-STANDARD_QUESTIONS = [[
-  CREATE TABLE IF NOT EXISTS StandardQuestions (
-    question_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category_id INTEGER,
-    question_text TEXT NOT NULL,
-    question_type TEXT NOT NULL,
-    FOREIGN KEY (category_id) REFERENCES StandardCategories(category_id)
+-- ClientToolInstances Table Definition (No cross-node foreign key)
+CLIENT_TOOL_INSTANCES = [[
+  CREATE TABLE IF NOT EXISTS ClientToolInstances (
+    instance_id TEXT PRIMARY KEY,    -- String ID
+    client_tool_id TEXT NOT NULL,    -- Link to Tools (in Main Node) managed via app logic
+    instance_name TEXT NOT NULL,
+    target_age_range TEXT,
+    target_sex TEXT,
+    target_geolocation TEXT,
+    deployment_date DATETIME,
+    expiration_date DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
-STANDARD_ANSWER_OPTIONS = [[
-  CREATE TABLE IF NOT EXISTS StandardAnswerOptions (
-    option_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    question_id INTEGER,
-    answer_text TEXT NOT NULL,
-    FOREIGN KEY (question_id) REFERENCES StandardQuestions(question_id)
-  );
-]]
-
-AUDIT_LOG = [[
-  CREATE TABLE IF NOT EXISTS AuditLog (
-    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action_type TEXT NOT NULL,
-    client_id INTEGER,
-    node_id INTEGER,
-    description TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (client_id) REFERENCES Clients(client_id)
-  );
-]]
-
--- Schema Definitions for Client Node
+-- ClientCategories Table Definition (No cross-node foreign key)
 CLIENT_CATEGORIES = [[
   CREATE TABLE IF NOT EXISTS ClientCategories (
-    client_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    survey_id INTEGER,
-    standard_category_id INTEGER,
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (standard_category_id) REFERENCES StandardCategories(category_id)
+    client_category_id TEXT PRIMARY KEY,   -- String ID
+    instance_id TEXT NOT NULL,             -- Link to ClientToolInstances
+    category_id TEXT NOT NULL,             -- Link to StandardCategories (in Main Node) managed via app logic
+    FOREIGN KEY (instance_id) REFERENCES ClientToolInstances(instance_id)
   );
 ]]
 
+-- ClientQuestions Table Definition
 CLIENT_QUESTIONS = [[
   CREATE TABLE IF NOT EXISTS ClientQuestions (
-    client_question_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    survey_id INTEGER,
-    standard_question_id INTEGER,
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (standard_question_id) REFERENCES StandardQuestions(question_id)
+    client_question_id TEXT PRIMARY KEY,   -- String ID
+    instance_id TEXT NOT NULL,             -- Link to ClientToolInstances
+    client_category_id TEXT,               -- Optional Link to ClientCategories (nullable)
+    question_text TEXT NOT NULL,
+    question_type TEXT NOT NULL,           -- e.g., "multiple-choice", "single-choice", etc.
+    order_number INTEGER,
+    additional_context TEXT,
+    FOREIGN KEY (instance_id) REFERENCES ClientToolInstances(instance_id)
   );
 ]]
 
+-- ClientAnswerOptions Table Definition
 CLIENT_ANSWER_OPTIONS = [[
   CREATE TABLE IF NOT EXISTS ClientAnswerOptions (
-    client_option_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_question_id INTEGER,
-    standard_option_id INTEGER,
+    answer_option_id TEXT PRIMARY KEY,    -- String ID
+    client_question_id TEXT NOT NULL,     -- Link to ClientQuestions
+    answer_text TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_question_id) REFERENCES ClientQuestions(client_question_id)
+  );
+]]
+
+-- ClientResponses Table Definition
+CLIENT_RESPONSES = [[
+  CREATE TABLE IF NOT EXISTS ClientResponses (
+    response_id TEXT PRIMARY KEY,     -- String ID
+    instance_id TEXT NOT NULL,        -- Link to ClientToolInstances
+    respondent_id TEXT NOT NULL,      -- Link to Respondents (managed by app logic, in Main Node)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES ClientToolInstances(instance_id)
+  );
+]]
+
+-- RespondentAnswers Table Definition
+RESPONDENT_ANSWERS = [[
+  CREATE TABLE IF NOT EXISTS RespondentAnswers (
+    answer_id TEXT PRIMARY KEY,    -- String ID
+    response_id TEXT NOT NULL,     -- Link to ClientResponses (in Client Node)
+    client_question_id TEXT NOT NULL, -- Link to ClientQuestions (in Client Node)
+    selected_option_id TEXT,       -- Link to ClientAnswerOptions (in Client Node)
+    answer_text TEXT,              -- For open-ended questions
+    answered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (response_id) REFERENCES ClientResponses(response_id),
     FOREIGN KEY (client_question_id) REFERENCES ClientQuestions(client_question_id),
-    FOREIGN KEY (standard_option_id) REFERENCES StandardAnswerOptions(option_id)
+    FOREIGN KEY (selected_option_id) REFERENCES ClientAnswerOptions(answer_option_id)
   );
 ]]
 
--- Schema Definitions for Respondent Node
-RESPONDENT_QUESTIONNAIRE_ANSWERS = [[
-  CREATE TABLE IF NOT EXISTS RespondentQuestionnaireAnswers (
-    answer_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    respondent_id INTEGER,
-    question_id INTEGER,
-    selected_option_id INTEGER,
-    answer_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
-    FOREIGN KEY (question_id) REFERENCES StandardQuestions(question_id),
-    FOREIGN KEY (selected_option_id) REFERENCES StandardAnswerOptions(option_id)
+-- VotingRecords Table Definition
+VOTING_RECORDS = [[
+  CREATE TABLE IF NOT EXISTS VotingRecords (
+    vote_id TEXT PRIMARY KEY,        -- String ID
+    respondent_id TEXT NOT NULL,     -- Link to Respondents (in Main Node, managed via app logic)
+    tool_id TEXT NOT NULL,           -- Link to Tools (in Main Node, managed via app logic)
+    selected_option_id TEXT,         -- Link to ClientAnswerOptions (in Client Node)
+    voted_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 ]]
 
-SURVEY_RESPONSES = [[
-  CREATE TABLE IF NOT EXISTS SurveyResponses (
-    response_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    respondent_id INTEGER,
-    survey_id INTEGER,
-    question_id INTEGER,
-    selected_option_id INTEGER,
-    response_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completion_time DATETIME,
-    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (question_id) REFERENCES ClientQuestions(client_question_id),
-    FOREIGN KEY (selected_option_id) REFERENCES ClientAnswerOptions(client_option_id)
+-- FormSubmissions Table Definition
+FORM_SUBMISSIONS = [[
+  CREATE TABLE IF NOT EXISTS FormSubmissions (
+    submission_id TEXT PRIMARY KEY,    -- String ID
+    respondent_id TEXT NOT NULL,       -- Link to Respondents (managed by app logic, in Main Node)
+    instance_id TEXT NOT NULL,         -- Link to ClientToolInstances (in Client Node)
+    client_category_id TEXT,           -- Link to ClientCategories (nullable)
+    submission_data TEXT NOT NULL,     -- JSON or other format
+    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES ClientToolInstances(instance_id)
   );
 ]]
 
 -- Function to Initialize the Database
 function InitDb()
-  db:exec(NODE_SCRIPTS)
-  db:exec(CLIENTS)
-  db:exec(RESPONDENTS)
-  db:exec(SURVEY_METADATA)
-  db:exec(SCHEMA_MANAGEMENT)
-  db:exec(STANDARD_CATEGORIES)
-  db:exec(STANDARD_QUESTIONS)
-  db:exec(STANDARD_ANSWER_OPTIONS)
-  db:exec(AUDIT_LOG)
+  local initial_main_schema_sql = NODES .. CLIENTS .. TOOLS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. ADVANCED_TARGET_GROUP_CRITERIA .. RESPONDENTS .. RESPONDENT_TOOLS .. SCHEMA_MANAGEMENT .. NODE_SCRIPTS
+  db:exec(initial_main_schema_sql)
+  InsertSchemaVersion("init_main_node", "v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
 
-  local initial_main_schema_sql = NODE_SCRIPTS .. CLIENTS .. RESPONDENTS .. STANDARD_CATEGORIES .. STANDARD_QUESTIONS .. STANDARD_ANSWER_OPTIONS .. AUDIT_LOG
-  InsertSchemaVersion("v1.0", "main", initial_main_schema_sql, "Initial schema for main AO process")
+  local initial_client_schema_sql = CLIENT_TOOL_INSTANCES .. CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS .. CLIENT_RESPONSES
+  InsertSchemaVersion("init_client_node", "v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
 
-  local initial_client_schema_sql = SURVEY_METADATA .. CLIENT_CATEGORIES .. CLIENT_QUESTIONS .. CLIENT_ANSWER_OPTIONS
-  InsertSchemaVersion("v1.0", "client", initial_client_schema_sql, "Initial schema for client AO process")
-
-  local initial_respondent_schema_sql = RESPONDENT_QUESTIONNAIRE_ANSWERS .. SURVEY_RESPONSES
-  InsertSchemaVersion("v1.0", "respondent", initial_respondent_schema_sql, "Initial schema for respondent AO process")
+  local initial_respondent_schema_sql = RESPONDENT_ANSWERS .. VOTING_RECORDS .. FORM_SUBMISSIONS
+  InsertSchemaVersion("init_respondent_node", "v1.0", "respondent", initial_respondent_schema_sql, "Initial schema for respondent AO process")
    
 end
 
--- Function to Insert a Lua Script into the NodeScripts Table
-function InsertNodeScript(node_type, script_name, script_version, script_content)
-  local insert_query = [[
-    INSERT INTO NodeScripts (node_type, script_name, script_version, script_content, created_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
-  ]]
-  local stmt = db:prepare(insert_query)
-  stmt:bind_values(node_type, script_name, script_version, script_content)
+-- Utility Functions
+
+-- Function to insert a new client
+function InsertClient(client_id, node_id, client_name, schema_version)
+  local stmt = db:prepare([[
+      INSERT INTO Clients (client_id, node_id, client_name, schema_version)
+      VALUES (?, ?, ?, ?)
+  ]])
+  stmt:bind_values(client_id, node_id, client_name, schema_version)
   stmt:step()
   stmt:finalize()
 end
 
--- Function to Retrieve All Lua Scripts by Node Type
-function GetAllNodeScriptsByType(node_type)
-  local query = [[
-    SELECT script_id, script_name, script_version, script_content FROM NodeScripts
-    WHERE node_type = ?;
-  ]]
-  local stmt = db:prepare(query)
-  stmt:bind_values(node_type)
+-- Function to update a client's information
+function UpdateClient(client_id, client_name, schema_version)
+  local stmt = db:prepare([[
+      UPDATE Clients
+      SET client_name = ?, schema_version = ?
+      WHERE client_id = ?
+  ]])
+  stmt:bind_values(client_name, schema_version, client_id)
+  stmt:step()
+  stmt:finalize()
+end
 
-  local scripts = {}
-  for row in stmt:nrows() do
-    table.insert(scripts, {
-      script_id = row.script_id,
-      script_name = row.script_name,
-      script_version = row.script_version,
-      script_content = row.script_content
-    })
+-- Function to delete a client
+function DeleteClient(client_id)
+  local stmt = db:prepare([[ DELETE FROM Clients WHERE client_id = ? ]])
+  stmt:bind_values(client_id)
+  stmt:step()
+  stmt:finalize()
+end
+
+-- Function to insert a new tool
+function InsertTool(tool_id, client_id, tool_type, tool_name, description)
+  local stmt = db:prepare([[
+      INSERT INTO Tools (tool_id, client_id, tool_type, tool_name, description)
+      VALUES (?, ?, ?, ?, ?)
+  ]])
+  stmt:bind_values(tool_id, client_id, tool_type, tool_name, description)
+  stmt:step()
+  stmt:finalize()
+end
+
+-- Function to insert a standard category
+function InsertStandardCategory(category_id, category_name, tool_type)
+  local stmt = db:prepare([[
+      INSERT INTO StandardCategories (category_id, category_name, tool_type)
+      VALUES (?, ?, ?)
+  ]])
+  stmt:bind_values(category_id, category_name, tool_type)
+  stmt:step()
+  stmt:finalize()
+end
+
+-- Function to insert standard answer options for a category
+function InsertStandardAnswerOption(option_id, category_id, answer_text)
+  local stmt = db:prepare([[
+      INSERT INTO StandardAnswerOptions (option_id, category_id, answer_text)
+      VALUES (?, ?, ?)
+  ]])
+  stmt:bind_values(option_id, category_id, answer_text)
+  stmt:step()
+  stmt:finalize()
+end
+
+-- Function to get all tools for a client
+function GetToolsForClient(client_id)
+  local stmt = db:prepare([[
+      SELECT * FROM Tools WHERE client_id = ?
+  ]])
+  stmt:bind_values(client_id)
+  local result = stmt:step()
+  local tools = {}
+
+  while result == sqlite3.ROW do
+      table.insert(tools, {
+          tool_id = stmt:get_value(0),
+          client_id = stmt:get_value(1),
+          tool_type = stmt:get_value(2),
+          tool_name = stmt:get_value(3),
+          description = stmt:get_value(4)
+      })
+      result = stmt:step()
   end
+
   stmt:finalize()
-  
-  return scripts
+  return tools
 end
 
--- Function to Retrieve Lua Script by Type and Version
-function GetNodeScriptByVersion(node_type, script_version)
-  local query = [[
-    SELECT script_content FROM NodeScripts
-    WHERE node_type = ? AND script_version = ?
-    ORDER BY created_at DESC LIMIT 1;
-  ]]
-  local stmt = db:prepare(query)
-  stmt:bind_values(node_type, script_name, script_version)
+-- Function to get standard categories
+function GetStandardCategories(tool_type)
+  local stmt = db:prepare([[
+      SELECT * FROM StandardCategories WHERE tool_type = ?
+  ]])
+  stmt:bind_values(tool_type)
+  local result = stmt:step()
+  local categories = {}
 
-  local script_content = nil
-  if stmt:step() == sqlite3.ROW then
-    script_content = stmt:get_value(0)
+  while result == sqlite3.ROW do
+      table.insert(categories, {
+          category_id = stmt:get_value(0),
+          category_name = stmt:get_value(1),
+          tool_type = stmt:get_value(2)
+      })
+      result = stmt:step()
   end
+
   stmt:finalize()
-  
-  return script_content
+  return categories
 end
 
--- Function to Retrieve the Latest Lua Script by Node Type
-function GetLatestNodeScript(node_type)
-  local query = [[
-    SELECT script_content FROM NodeScripts
-    WHERE node_type = ?
-    ORDER BY script_version DESC, created_at DESC LIMIT 1;
-  ]]
-  local stmt = db:prepare(query)
-  stmt:bind_values(node_type)
-
-  local script_content = nil
-  if stmt:step() == sqlite3.ROW then
-    script_content = stmt:get_value(0)
-  end
-  stmt:finalize()
-  
-  return script_content
-end
-
--- Function to Register a New Client
-function AddClient(client_name, assigned_node_id, schema_version)
-  -- Insert a new client into the Clients table
-  local insert_client = [[
-    INSERT INTO Clients (client_name, assigned_node_id, schema_version, created_at, status)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'active');
-  ]]
-  local stmt = db:prepare(insert_client)
-  stmt:bind_values(client_name, assigned_node_id, schema_version)
-  stmt:step()
-  stmt:finalize()
-
-  -- Log the registration in the AuditLog
-  local audit_log = [[
-    INSERT INTO AuditLog (action_type, client_id, description, timestamp)
-    VALUES ('client_registration', last_insert_rowid(), ?, CURRENT_TIMESTAMP);
-  ]]
-  local audit_stmt = db:prepare(audit_log)
-  audit_stmt:bind_values("New client registered: " .. client_name)
-  audit_stmt:step()
-  audit_stmt:finalize()
-end
-
--- Function to Register a New Respondent
-function RegisterRespondent(respondent_name, age, sex, geolocation)
-  -- Insert a new respondent into the Respondents table
-  local insert_respondent = [[
-    INSERT INTO Respondents (respondent_name, age, sex, geolocation, created_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
-  ]]
-  local stmt = db:prepare(insert_respondent)
-  stmt:bind_values(respondent_name, age, sex, geolocation)
-  stmt:step()
-  stmt:finalize()
-
-  -- Log the registration in the AuditLog
-  local audit_log = [[
-    INSERT INTO AuditLog (action_type, respondent_id, description, timestamp)
-    VALUES ('respondent_registration', last_insert_rowid(), ?, CURRENT_TIMESTAMP);
-  ]]
-  local audit_stmt = db:prepare(audit_log)
-  audit_stmt:bind_values("New respondent registered: " .. respondent_name)
-  audit_stmt:step()
-  audit_stmt:finalize()
-end
-
--- Function to Update the Schema Version
-function UpdateSchemaVersion(schema_sql, description)
-  -- Generate a new schema version
-  local new_schema_version = os.date("v1.%Y%m%d%H%M%S")
-
-  -- Insert new schema version details into SchemaManagement
-  local update_query = [[
-    INSERT INTO SchemaManagement (schema_version, schema_sql, description, applied_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-  ]]
-  local stmt = db:prepare(update_query)
-  stmt:bind_values(new_schema_version, schema_sql, description)
-  stmt:step()
-  stmt:finalize()
-
-  -- Propagate schema changes to all active nodes
-  PropagateSchemaToNodes(schema_sql, new_schema_version)
-end
-
--- Function to Propagate Schema Updates to All Nodes
-function PropagateSchemaToNodes(schema_sql, schema_version)
-  local node_query = "SELECT node_id FROM Clients WHERE status = 'active'"
-  for row in db:nrows(node_query) do
-    local node_id = row.node_id
-    local client_node = GetClientNodeInstance(node_id)  -- Hypothetical function to get node reference
-
-    -- Apply the schema update to the client node
-    local success, err = pcall(function()
-      client_node:InitDb(schema_sql)
-    end)
-
-    -- Log the result in AuditLog
-    local audit_query = [[
-      INSERT INTO AuditLog (action_type, node_id, description, timestamp)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-    ]]
-    local action = success and "schema_update_success" or "schema_update_failure"
-    local description = success and ("Schema updated to version " .. schema_version) or ("Failed to update schema: " .. err)
-
-    local audit_stmt = db:prepare(audit_query)
-    audit_stmt:bind_values(action, node_id, description)
-    audit_stmt:step()
-    audit_stmt:finalize()
-  end
-end
-
--- Function to Insert a Schema Version into the SchemaManagement Table
-function InsertSchemaVersion(schema_version, node_type, schema_sql, description)
-  local insert_query = [[
-    INSERT INTO SchemaManagement (schema_version, node_type, schema_sql, description, applied_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
-  ]]
-  local stmt = db:prepare(insert_query)
-  stmt:bind_values(schema_version, node_type, schema_sql, description)
+-- Function to update schema management table
+function InsertSchemaManagement(schema_id, schema_version, node_type, schema_sql, description)
+  local stmt = db:prepare([[
+      INSERT INTO SchemaManagement (schema_id, schema_version, node_type, schema_sql, description)
+      VALUES (?, ?, ?, ?, ?)
+  ]])
+  stmt:bind_values(schema_id, schema_version, node_type, schema_sql, description)
   stmt:step()
   stmt:finalize()
 end
 
--- Function to Retrieve the Latest SchemaManagement by Node Type
+-- Function to get the latest schema management record for a node type
 function GetLatestSchemaManagement(node_type)
-  local query = [[
-    SELECT schema_sql FROM SchemaManagement
-    WHERE node_type = ?
-    ORDER BY schema_version DESC, applied_at DESC LIMIT 1;
-  ]]
-  local stmt = db:prepare(query)
+  local stmt = db:prepare([[
+      SELECT * FROM SchemaManagement
+      WHERE node_type = ?
+      ORDER BY schema_version DESC
+      LIMIT 1
+  ]])
   stmt:bind_values(node_type)
+  local result = stmt:step()
+  local schema = {}
 
-  local schema_sql = nil
-  if stmt:step() == sqlite3.ROW then
-    schema_sql = stmt:get_value(0)
-  end
-  stmt:finalize()  
-  return schema_sql;
-end
-
-
--- Function to Retrieve All Records from SchemaManagement Table as JSON
-function RetrieveAllSchemaManagementAsJson()
-    -- SQL query to select all records from SchemaManagement
-    local query = [[
-        SELECT schema_id, schema_version, node_type, schema_sql, description, applied_at FROM SchemaManagement;
-    ]]
-
-    -- Prepare a table to hold the results
-    local schema_management_records = {}
-
-    -- Prepare and execute the query
-    for row in db:nrows(query) do
-        -- Create a table for each record
-        local record = {
-            schema_id = row.schema_id,
-            schema_version = row.schema_version,
-            node_type = row.node_type,
-            schema_sql = row.schema_sql,
-            description = row.description,
-            applied_at = row.applied_at
-        }
-        -- Insert each record into the result table
-        table.insert(schema_management_records, record)
-    end
-
-    -- Convert the result table to a JSON string
-    local json_result = json.encode(schema_management_records, { indent = true })
-
-    -- Print the JSON result
-    print(json_result)
-
-    -- Return the JSON string
-    return json_result
-end
-
--- Close the database connection when done
-function CloseDb()
-  db:close()
-end
-
--- Example Initialization
-InitDb()
-
---[[
-     CanSpawnClient
-   ]]
---
-Handlers.add(
-    "CanRegister",
-    Handlers.utils.hasMatchingTag("Action", "CanRegister"),
-    function(msg)
-      local script_content =  GetLatestNodeScript(msg.Tags.node_type);
-      if script_content then
-          ao.send(
-              {
-                  Target = msg.From,
-                  Data = "Ok"
-              }
-          )
-      end
-    end
-)
-
---[[
-     LoadApi
-   ]]
---
-Handlers.add(
-    "LoadApi",
-    Handlers.utils.hasMatchingTag("Action", "LoadApi"),
-    function(msg)
-      local local_s = json.decode(msg.Data)
-      InsertNodeScript(local_s.node_type, local_s.script_name, local_s.script_version, local_s.script_content)    
-  end
-)
-
---[[
-     GetSchemaManagement
-   ]]
---
-Handlers.add(
-    "GetSchemaManagement",
-    Handlers.utils.hasMatchingTag("Action", "GetSchemaManagement"),
-    function(msg)
-        local schema_management_sql =  GetLatestSchemaManagement(msg.Tags.node_type);
-        if schema_management_sql then
-            ao.send(
-                {
-                    Target = msg.From,
-                    Data = schema_management_sql
-                }
-            )
-        end
-    end
-)
-
---[[
-     GetNodeScripts
-   ]]
---
-Handlers.add(
-    "GetNodeScripts",
-    Handlers.utils.hasMatchingTag("Action", "GetNodeScripts"),
-    function(msg)
-      local node_script_records =  GetAllNodeScriptsByType(msg.Tags.node_type);
-        if node_script_records then
-            ao.send(
-                {
-                    Target = msg.From,
-                    Data = json.encode(node_script_records)
-                }
-            )
-        end
-    end
-)
-
---[[
-     RegisterClient
-   ]]
---
-Handlers.add(
-    "RegisterClient",
-    Handlers.utils.hasMatchingTag("Action", "RegisterClient"),
-    function(msg)
-      local client_register_form = json.decode(msg.Data)
-      -- local schema_sql =  GetLatestSchemaManagement("client")
-      AddClient(client_register_form.name, client_register_form.process_id, "v1.0")
-      -- if schema_sql then
-      --   ao.send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
-      -- end  
-    end
-)
-
---[[
-     RegisterClientSchema
-   ]]
---
-Handlers.add(
-    "RegisterClientSchema",
-    Handlers.utils.hasMatchingTag("Action", "RegisterClientSchema"),
-    function(msg)
-      -- local client_register_form = json.decode(msg.Data)
-      local schema_sql =  GetLatestSchemaManagement("client")
-      if schema_sql then
-        -- Send({ Target = client_register_form.process_id, Action = "UpdateSchema", Data = schema_sql })
-        ao.send(
-          {
-              Target = msg.From,
-              Data = schema_sql
-          }
-      )
-  else     
-    ao.send(
-      {
-          Target = msg.From,
-          Data = "not ok"
+  if result == sqlite3.ROW then
+      schema = {
+          schema_id = stmt:get_value(0),
+          schema_version = stmt:get_value(1),
+          node_type = stmt:get_value(2),
+          schema_sql = stmt:get_value(3),
+          description = stmt:get_value(4),
+          applied_at = stmt:get_value(5)
       }
-  )
+  end
 
-      end  
+  stmt:finalize()
+  return schema
+end
+
+-- Function to insert or update a node script in the NodeScripts table
+function InsertNodeScript(script_id, node_type, script_name, script_version, script_content)
+  -- First, check if a script with the same node_type and script_name already exists
+  local stmt = db:prepare([[
+      SELECT COUNT(*) FROM NodeScripts WHERE node_type = ? AND script_name = ?
+  ]])
+  stmt:bind_values(node_type, script_name)
+  local result = stmt:step()
+  local count = stmt:get_value(0)
+  stmt:finalize()
+
+  if count > 0 then
+      -- If the script exists, update the existing record
+      local update_stmt = db:prepare([[
+          UPDATE NodeScripts 
+          SET script_version = ?, script_content = ?, created_at = CURRENT_TIMESTAMP 
+          WHERE node_type = ? AND script_name = ?
+      ]])
+      update_stmt:bind_values(script_version, script_content, node_type, script_name)
+      update_stmt:step()
+      update_stmt:finalize()
+      return "Script updated"
+  else
+      -- If the script does not exist, insert a new record
+      local insert_stmt = db:prepare([[
+          INSERT INTO NodeScripts (script_id, node_type, script_name, script_version, script_content) 
+          VALUES (?, ?, ?, ?, ?)
+      ]])
+      insert_stmt:bind_values(script_id, node_type, script_name, script_version, script_content)
+      insert_stmt:step()
+      insert_stmt:finalize()
+      return "Script inserted"
+  end
+end
+
+-- Handler Definitions
+
+-- Define the InsertNodeScript handler
+Handlers.add(
+    "InsertNodeScript",
+    Handlers.utils.hasMatchingTag("Action", "InsertNodeScript"),
+    function(msg)
+        -- Decode the incoming JSON message
+        local script_data = json.decode(msg.Data)
+
+        -- Call the InsertNodeScript function to insert or update the script
+        local result = InsertNodeScript(
+            msg.id,
+            script_data.node_type,
+            script_data.script_name,
+            script_data.script_version,
+            script_data.script_content
+        )
+
+        -- Send a response back to the caller
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
     end
+)
+
+-- CreateClient Handler: Insert a new client
+Handlers.add(
+  "CreateClient",
+  Handlers.utils.hasMatchingTag("Action", "CreateClient"),
+  function(msg)
+      local client_data = json.decode(msg.Data)
+      InsertClient(
+          client_data.client_id,
+          client_data.node_id,
+          client_data.client_name,
+          client_data.schema_version
+      )
+      ao.send({ Target = msg.From, Data = "Client created" })
+  end
+)
+
+-- UpdateClient Handler: Update client details
+Handlers.add(
+  "UpdateClient",
+  Handlers.utils.hasMatchingTag("Action", "UpdateClient"),
+  function(msg)
+      local client_data = json.decode(msg.Data)
+      UpdateClient(
+          client_data.client_id,
+          client_data.client_name,
+          client_data.schema_version
+      )
+      ao.send({ Target = msg.From, Data = "Client updated" })
+  end
+)
+
+-- DeleteClient Handler: Delete a client
+Handlers.add(
+  "DeleteClient",
+  Handlers.utils.hasMatchingTag("Action", "DeleteClient"),
+  function(msg)
+      local client_id = msg.Data.client_id
+      DeleteClient(client_id)
+      ao.send({ Target = msg.From, Data = "Client deleted" })
+  end
+)
+
+-- CreateTool Handler: Insert a new tool for a client
+Handlers.add(
+  "CreateTool",
+  Handlers.utils.hasMatchingTag("Action", "CreateTool"),
+  function(msg)
+      local tool_data = json.decode(msg.Data)
+      InsertTool(
+          tool_data.tool_id,
+          tool_data.client_id,
+          tool_data.tool_type,
+          tool_data.tool_name,
+          tool_data.description
+      )
+      ao.send({ Target = msg.From, Data = "Tool created" })
+  end
+)
+
+-- CreateStandardCategory Handler: Insert a new standard category
+Handlers.add(
+  "CreateStandardCategory",
+  Handlers.utils.hasMatchingTag("Action", "CreateStandardCategory"),
+  function(msg)
+      local category_data = json.decode(msg.Data)
+      InsertStandardCategory(
+          category_data.category_id,
+          category_data.category_name,
+          category_data.tool_type
+      )
+      ao.send({ Target = msg.From, Data = "Category created" })
+  end
+)
+
+-- CreateStandardAnswerOption Handler: Insert a standard answer option for a category
+Handlers.add(
+  "CreateStandardAnswerOption",
+  Handlers.utils.hasMatchingTag("Action", "CreateStandardAnswerOption"),
+  function(msg)
+      local answer_data = json.decode(msg.Data)
+      InsertStandardAnswerOption(
+          answer_data.option_id,
+          answer_data.category_id,
+          answer_data.answer_text
+      )
+      ao.send({ Target = msg.From, Data = "Answer option created" })
+  end
+)
+
+-- GetToolsForClient Handler: Get all tools for a client
+Handlers.add(
+  "GetToolsForClient",
+  Handlers.utils.hasMatchingTag("Action", "GetToolsForClient"),
+  function(msg)
+      local client_id = msg.Data.client_id
+      local tools = GetToolsForClient(client_id)
+      ao.send({ Target = msg.From, Data = json.encode(tools) })
+  end
+)
+
+-- GetStandardCategories Handler: Get all standard categories for a tool type
+Handlers.add(
+  "GetStandardCategories",
+  Handlers.utils.hasMatchingTag("Action", "GetStandardCategories"),
+  function(msg)
+      local tool_type = msg.Data.tool_type
+      local categories = GetStandardCategories(tool_type)
+      ao.send({ Target = msg.From, Data = json.encode(categories) })
+  end
+)
+
+-- InsertSchemaManagement Handler: Insert a schema management record
+Handlers.add(
+  "InsertSchemaManagement",
+  Handlers.utils.hasMatchingTag("Action", "InsertSchemaManagement"),
+  function(msg)
+      local schema_data = json.decode(msg.Data)
+      InsertSchemaManagement(
+          schema_data.schema_id,
+          schema_data.schema_version,
+          schema_data.node_type,
+          schema_data.schema_sql,
+          schema_data.description
+      )
+      ao.send({ Target = msg.From, Data = "Schema management record inserted" })
+  end
+)
+
+-- GetLatestSchemaManagement Handler: Get the latest schema for a node type
+Handlers.add(
+  "GetLatestSchemaManagement",
+  Handlers.utils.hasMatchingTag("Action", "GetLatestSchemaManagement"),
+  function(msg)
+      local node_type = msg.Data.node_type
+      local schema = GetLatestSchemaManagement(node_type)
+      ao.send({ Target = msg.From, Data = json.encode(schema) })
+  end
 )

@@ -1,130 +1,182 @@
 --[[
     Imports -- Required Libraries
 ]] --
-
 local json = require("json")
 local ao = require("ao")
-local sqlite3 = require("sqlite3")
+local sqlite3 = require("lsqlite3")
 
 -- Open the database
-local db = sqlite3.open("respondent_node.db")
+local db = db or sqlite3.open_memory()
 
--- Schema Definitions for Respondent Node
-RESPONDENT_QUESTIONNAIRE_ANSWERS = [[
-  CREATE TABLE IF NOT EXISTS RespondentQuestionnaireAnswers (
-    answer_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    respondent_id INTEGER,
-    question_id INTEGER,
-    selected_option_id INTEGER,
-    answer_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
-    FOREIGN KEY (question_id) REFERENCES StandardQuestions(question_id),
-    FOREIGN KEY (selected_option_id) REFERENCES StandardAnswerOptions(option_id)
-  );
-]]
+-- Utility Functions
 
-SURVEY_RESPONSES = [[
-  CREATE TABLE IF NOT EXISTS SurveyResponses (
-    response_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    respondent_id INTEGER,
-    survey_id INTEGER,
-    question_id INTEGER,
-    selected_option_id INTEGER,
-    response_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completion_time DATETIME,
-    FOREIGN KEY (respondent_id) REFERENCES Respondents(respondent_id),
-    FOREIGN KEY (survey_id) REFERENCES SurveyMetadata(survey_id),
-    FOREIGN KEY (question_id) REFERENCES ClientQuestions(client_question_id),
-    FOREIGN KEY (selected_option_id) REFERENCES ClientAnswerOptions(client_option_id)
-  );
-]]
-
--- Function to Initialize the Respondent Node Database
-function InitDb(schema_sql)
-  db:exec(RESPONDENT_QUESTIONNAIRE_ANSWERS)
-  db:exec(SURVEY_RESPONSES)
-
-  -- Execute schema_sql if provided (e.g., schema updates)
-  if schema_sql then
-    db:exec(schema_sql)
-  end
-end
-
--- Function for Respondent to Answer the Standard Questionnaire
-function AnswerStandardQuestionnaire(respondent_id, answers)
-  for _, answer in ipairs(answers) do
-    local insert_answer = [[
-      INSERT INTO RespondentQuestionnaireAnswers (respondent_id, question_id, selected_option_id, answer_timestamp)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP);
-    ]]
-    local stmt = db:prepare(insert_answer)
-    stmt:bind_values(respondent_id, answer.question_id, answer.selected_option_id)
+-- Function to insert a respondent's answer
+function InsertRespondentAnswer(response_id, client_question_id, selected_option_id, answer_text)
+    local stmt = db:prepare([[
+        INSERT INTO RespondentAnswers (response_id, client_question_id, selected_option_id, answer_text)
+        VALUES (?, ?, ?, ?)
+    ]])
+    stmt:bind_values(response_id, client_question_id, selected_option_id, answer_text)
     stmt:step()
     stmt:finalize()
-  end
-
-  print("Standardized questionnaire answers stored for respondent ID: " .. respondent_id)
 end
 
--- Function to Get Available Surveys for Respondent
-function GetAvailableSurveys(respondent_id)
-  -- Fetch respondent details for demographic matching (geolocation, age, sex)
-  local respondent_query = [[
-    SELECT age, sex, geolocation FROM Respondents WHERE respondent_id = ?;
-  ]]
-  local stmt = db:prepare(respondent_query)
-  stmt:bind_values(respondent_id)
-  stmt:step()
-  local age = stmt:get_value(0)
-  local sex = stmt:get_value(1)
-  local geolocation = stmt:get_value(2)
-  stmt:finalize()
-
-  -- Fetch eligible surveys from SurveyMetadata based on respondent's demographics
-  local eligible_surveys = {}
-  local survey_query = [[
-    SELECT survey_id, title FROM SurveyMetadata
-    WHERE (target_age_range IS NULL OR target_age_range = ?)
-    AND (target_sex IS NULL OR target_sex = ?)
-    AND (target_geolocation IS NULL OR target_geolocation = ?)
-    AND status = 'published';
-  ]]
-  local survey_stmt = db:prepare(survey_query)
-  survey_stmt:bind_values(age, sex, geolocation)
-
-  for row in survey_stmt:nrows() do
-    table.insert(eligible_surveys, {survey_id = row.survey_id, title = row.title})
-  end
-  survey_stmt:finalize()
-
-  print("Eligible surveys for respondent ID: " .. respondent_id)
-  for _, survey in ipairs(eligible_surveys) do
-    print("Survey ID: " .. survey.survey_id .. ", Title: " .. survey.title)
-  end
-
-  return eligible_surveys
-end
-
--- Function for Respondent to Submit Survey Responses
-function SubmitSurveyResponse(respondent_id, survey_id, responses)
-  for _, response in ipairs(responses) do
-    local insert_response = [[
-      INSERT INTO SurveyResponses (respondent_id, survey_id, question_id, selected_option_id, response_timestamp)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
-    ]]
-    local stmt = db:prepare(insert_response)
-    stmt:bind_values(respondent_id, survey_id, response.question_id, response.selected_option_id)
+-- Function to insert a respondent's vote
+function InsertVotingRecord(respondent_id, tool_id, selected_option_id)
+    local stmt = db:prepare([[
+        INSERT INTO VotingRecords (respondent_id, tool_id, selected_option_id)
+        VALUES (?, ?, ?)
+    ]])
+    stmt:bind_values(respondent_id, tool_id, selected_option_id)
     stmt:step()
     stmt:finalize()
-  end
-
-  print("Survey responses stored for respondent ID: " .. respondent_id .. ", Survey ID: " .. survey_id)
 end
 
--- Close the database connection when done
-function CloseDb()
-  db:close()
+-- Function to get a respondent's answer by respondent_id and client_question_id
+function GetResponseByRespondentIdAndQuestionId(respondent_id, client_question_id)
+    local stmt = db:prepare([[
+        SELECT * FROM RespondentAnswers 
+        WHERE respondent_id = ? AND client_question_id = ?
+    ]])
+    stmt:bind_values(respondent_id, client_question_id)
+    local result = stmt:step()
+    local response = {}
+
+    if result == sqlite3.ROW then
+        response = {
+            answer_id = stmt:get_value(0),
+            response_id = stmt:get_value(1),
+            client_question_id = stmt:get_value(2),
+            selected_option_id = stmt:get_value(3),
+            answer_text = stmt:get_value(4),
+            answered_at = stmt:get_value(5)
+        }
+    end
+
+    stmt:finalize()
+    return response
 end
 
--- Example Initialization
-InitDb()
+-- Utility function to paginate respondent answers
+function GetPaginatedRespondentAnswers(page, page_size)
+    local offset = (page - 1) * page_size
+    local stmt = db:prepare([[
+        SELECT * FROM RespondentAnswers
+        LIMIT ? OFFSET ?
+    ]])
+    stmt:bind_values(page_size, offset)
+    local result = stmt:step()
+    local answers = {}
+
+    while result == sqlite3.ROW do
+        table.insert(answers, {
+            answer_id = stmt:get_value(0),
+            response_id = stmt:get_value(1),
+            client_question_id = stmt:get_value(2),
+            selected_option_id = stmt:get_value(3),
+            answer_text = stmt:get_value(4),
+            answered_at = stmt:get_value(5)
+        })
+        result = stmt:step()
+    end
+
+    stmt:finalize()
+    return answers
+end
+
+-- Function to insert form submission data
+function InsertFormSubmission(respondent_id, instance_id, client_category_id, submission_data)
+    local stmt = db:prepare([[
+        INSERT INTO FormSubmissions (respondent_id, instance_id, client_category_id, submission_data)
+        VALUES (?, ?, ?, ?)
+    ]])
+    stmt:bind_values(respondent_id, instance_id, client_category_id, submission_data)
+    stmt:step()
+    stmt:finalize()
+end
+
+-- Handler Definitions
+
+-- SubmitResponse Handler: Insert respondent's answer
+Handlers.add(
+    "SubmitResponse",
+    Handlers.utils.hasMatchingTag("Action", "SubmitResponse"),
+    function(msg)
+        local response_data = json.decode(msg.Data)
+        InsertRespondentAnswer(
+            response_data.response_id,
+            response_data.client_question_id,
+            response_data.selected_option_id,
+            response_data.answer_text
+        )
+        ao.send({ Target = msg.From, Data = "Response submitted" })
+    end
+)
+
+-- SubmitVote Handler: Insert respondent's vote
+Handlers.add(
+    "SubmitVote",
+    Handlers.utils.hasMatchingTag("Action", "SubmitVote"),
+    function(msg)
+        local vote_data = json.decode(msg.Data)
+        InsertVotingRecord(
+            vote_data.respondent_id,
+            vote_data.tool_id,
+            vote_data.selected_option_id
+        )
+        ao.send({ Target = msg.From, Data = "Vote submitted" })
+    end
+)
+
+-- GetResponseByRespondentIdAndQuestionId Handler: Get respondent's answer by respondent_id and client_question_id
+Handlers.add(
+    "GetResponseByRespondentIdAndQuestionId",
+    Handlers.utils.hasMatchingTag("Action", "GetResponseByRespondentIdAndQuestionId"),
+    function(msg)
+        local data = json.decode(msg.Data)
+        local response = GetResponseByRespondentIdAndQuestionId(data.respondent_id, data.client_question_id)
+        ao.send(
+            {
+                Target = msg.From,
+                Data = json.encode(response)
+            }
+        )
+    end
+)
+
+-- PaginateRespondentAnswers Handler: Paginate through respondent answers
+Handlers.add(
+    "PaginateRespondentAnswers",
+    Handlers.utils.hasMatchingTag("Action", "PaginateRespondentAnswers"),
+    function(msg)
+        local data = json.decode(msg.Data)
+        local page = data.page or 1
+        local page_size = data.page_size or 10
+        local paginated_answers = GetPaginatedRespondentAnswers(page, page_size)
+
+        ao.send(
+            {
+                Target = msg.From,
+                Data = json.encode(paginated_answers)
+            }
+        )
+    end
+)
+
+-- SubmitForm Handler: Insert respondent's form submission
+Handlers.add(
+    "SubmitForm",
+    Handlers.utils.hasMatchingTag("Action", "SubmitForm"),
+    function(msg)
+        local form_data = json.decode(msg.Data)
+        InsertFormSubmission(
+            form_data.respondent_id,
+            form_data.instance_id,
+            form_data.client_category_id,
+            form_data.submission_data
+        )
+        ao.send({ Target = msg.From, Data = "Form submitted" })
+    end
+)
+
+-- Existing handlers for other respondent actions like form submission, etc.

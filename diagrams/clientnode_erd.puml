@@ -1,0 +1,60 @@
+@startuml
+skinparam linetype ortho
+
+package "Client Node" {
+    entity "ClientToolInstances" {
+        * instance_id : STRING <<PK>>     -- String ID
+        --
+        client_tool_id : STRING NOT NULL  -- Link to Tools (from Main Node)
+        instance_name : TEXT NOT NULL
+        target_age_range : TEXT
+        target_sex : TEXT
+        target_geolocation : TEXT
+        deployment_date : DATETIME
+        expiration_date : DATETIME
+        created_at : DATETIME DEFAULT CURRENT_TIMESTAMP
+    }
+
+    entity "ClientCategories" {
+        * client_category_id : STRING <<PK>>  -- String ID
+        --
+        instance_id : STRING NOT NULL          -- Link to ClientToolInstances
+        category_id : STRING NOT NULL          -- Link to StandardCategories (from Main Node)
+    }
+
+    entity "ClientQuestions" {
+        * client_question_id : STRING <<PK>>   -- String ID
+        --
+        instance_id : STRING NOT NULL          -- Link to ClientToolInstances
+        client_category_id : STRING            -- Optional Link to ClientCategories
+        question_text : TEXT NOT NULL
+        question_type : TEXT NOT NULL
+        order_number : INTEGER
+        additional_context : TEXT
+    }
+
+    entity "ClientAnswerOptions" {
+        * answer_option_id : STRING <<PK>>   -- String ID
+        --
+        client_question_id : STRING NOT NULL -- Link to ClientQuestions
+        answer_text : TEXT NOT NULL
+        created_at : DATETIME
+    }
+
+    entity "ClientResponses" {
+        * response_id : STRING <<PK>>        -- String ID
+        --
+        instance_id : STRING NOT NULL        -- Link to ClientToolInstances
+        respondent_id : STRING NOT NULL      -- Link to Respondents (from Main Node)
+        created_at : DATETIME
+    }
+}
+
+' Relationships between Client Node Tables
+ClientToolInstances ||--o{ ClientCategories : "instance_id"
+StandardCategories ||--o{ ClientCategories : "category_id"
+ClientToolInstances ||--o{ ClientQuestions : "instance_id"
+ClientCategories ||--o{ ClientQuestions : "client_category_id"
+ClientQuestions ||--o{ ClientAnswerOptions : "client_question_id"
+ClientToolInstances ||--o{ ClientResponses : "instance_id"
+@enduml

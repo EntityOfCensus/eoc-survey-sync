@@ -1,0 +1,211 @@
+@startuml
+skinparam linetype ortho
+
+' Main Node ERD
+package "Main Node" {
+    entity "Nodes" {
+        * node_id : STRING <<PK>>  -- String ID
+        --
+        node_type : TEXT
+        node_status : TEXT
+        node_version : TEXT
+        created_at : DATETIME
+    }
+
+    entity "SchemaManagement" {
+        * schema_id : STRING <<PK>>  -- String ID
+        --
+        schema_version : TEXT
+        node_type : TEXT
+        schema_sql : TEXT
+        description : TEXT
+        applied_at : DATETIME
+    }
+
+    entity "NodeScripts" {
+        * script_id : STRING <<PK>>  -- String ID
+        --
+        node_type : TEXT
+        script_name : TEXT
+        script_version : TEXT
+        script_content : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Clients" {
+        * client_id : STRING <<PK>>  -- String ID
+        --
+        node_id : STRING <<FK>>     -- Link to Nodes
+        client_name : TEXT
+        schema_version : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Tools" {
+        * tool_id : STRING <<PK>>    -- String ID
+        --
+        client_id : STRING <<FK>>    -- Link to Clients
+        tool_type : TEXT
+        tool_name : TEXT
+        description : TEXT
+        created_at : DATETIME
+    }
+
+    entity "StandardCategories" {
+        * category_id : STRING <<PK>>  -- String ID
+        --
+        category_name : TEXT
+        tool_type : TEXT
+        created_at : DATETIME
+    }
+
+    entity "StandardAnswerOptions" {
+        * option_id : STRING <<PK>>   -- String ID
+        --
+        category_id : STRING <<FK>>   -- Link to StandardCategories
+        answer_text : TEXT
+        created_at : DATETIME
+    }
+
+    entity "AdvancedTargetGroupCriteria" {
+        * criteria_id : STRING <<PK>>   -- String ID
+        --
+        tool_id : STRING <<FK>>         -- Link to Tools
+        target_criteria : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Respondents" {
+        * respondent_id : STRING <<PK>>  -- String ID
+        --
+        node_id : STRING <<FK>>         -- Link to Nodes
+        respondent_name : TEXT
+        age : INTEGER
+        sex : TEXT
+        geolocation : TEXT
+        email : TEXT
+        schema_version : TEXT           -- Track schema version
+        created_at : DATETIME
+    }
+
+    entity "RespondentTools" {
+        * respondent_tool_id : STRING <<PK>>  -- String ID
+        --
+        respondent_id : STRING <<FK>>         -- Link to Respondents
+        tool_id : STRING <<FK>>               -- Link to Tools
+        last_participation_date : DATETIME
+        participation_count : INTEGER
+    }
+}
+
+' Client Node ERD
+package "Client Node" {
+    entity "ClientToolInstances" {
+        * instance_id : STRING <<PK>>     -- String ID
+        --
+        client_tool_id : STRING <<FK>>    -- Link to Tools
+        instance_name : TEXT
+        target_age_range : TEXT
+        target_sex : TEXT
+        target_geolocation : TEXT
+        deployment_date : DATETIME
+        expiration_date : DATETIME
+        created_at : DATETIME
+    }
+
+    entity "ClientCategories" {
+        * client_category_id : STRING <<PK>>  -- String ID
+        --
+        instance_id : STRING <<FK>>          -- Link to ClientToolInstances
+        category_id : STRING <<FK>>          -- Link to StandardCategories
+    }
+
+    entity "ClientQuestions" {
+        * client_question_id : STRING <<PK>>  -- String ID
+        --
+        instance_id : STRING <<FK>>          -- Link to ClientToolInstances
+        client_category_id : STRING <<FK>>   -- Optional Link to ClientCategories (can be NULL for voting)
+        question_text : TEXT
+        question_type : TEXT
+        order_number : INTEGER
+        additional_context : TEXT
+    }
+
+    entity "ClientAnswerOptions" {
+        * answer_option_id : STRING <<PK>>   -- String ID
+        --
+        client_question_id : STRING <<FK>>   -- Link to ClientQuestions
+        answer_text : TEXT
+        created_at : DATETIME
+    }
+
+    entity "ClientResponses" {
+        * response_id : STRING <<PK>>        -- String ID
+        --
+        instance_id : STRING <<FK>>          -- Link to ClientToolInstances
+        respondent_id : STRING <<FK>>        -- Link to Respondents
+        created_at : DATETIME
+    }
+}
+
+' Respondent Node ERD
+package "Respondent Node" {
+    entity "RespondentAnswers" {
+        * answer_id : STRING <<PK>>          -- String ID
+        --
+        response_id : STRING <<FK>>          -- Link to ClientResponses
+        client_question_id : STRING <<FK>>   -- Link to ClientQuestions
+        selected_option_id : STRING <<FK>>   -- Link to ClientAnswerOptions
+        answer_text : TEXT
+        answered_at : DATETIME
+    }
+
+    entity "VotingRecords" {
+        * vote_id : STRING <<PK>>            -- String ID
+        --
+        respondent_id : STRING <<FK>>        -- Link to Respondents
+        tool_id : STRING <<FK>>              -- Link to Tools
+        selected_option_id : STRING <<FK>>   -- Link to ClientAnswerOptions
+        voted_at : DATETIME
+    }
+
+    entity "FormSubmissions" {
+        * submission_id : STRING <<PK>>      -- String ID
+        --
+        respondent_id : STRING <<FK>>        -- Link to Respondents
+        instance_id : STRING <<FK>>          -- Link to ClientToolInstances
+        client_category_id : STRING <<FK>>   -- Link to ClientCategories
+        submission_data : TEXT
+        submitted_at : DATETIME
+    }
+}
+
+' Relationships between Main Node Tables
+Clients ||--o{ Tools : "client_id"
+Tools ||--o{ StandardCategories : "tool_id"
+StandardCategories ||--o{ StandardAnswerOptions : "category_id"
+Tools ||--o{ AdvancedTargetGroupCriteria : "tool_id"
+Respondents ||--o{ RespondentTools : "respondent_id"
+Tools ||--o{ RespondentTools : "tool_id"
+
+' Relationships between Client Node Tables and Main Node
+Tools ||--o{ ClientToolInstances : "client_tool_id"
+ClientToolInstances ||--o{ ClientCategories : "instance_id"
+StandardCategories ||--o{ ClientCategories : "category_id"
+ClientToolInstances ||--o{ ClientQuestions : "instance_id"
+ClientCategories ||--o{ ClientQuestions : "client_category_id"  -- Optional
+ClientQuestions ||--o{ ClientAnswerOptions : "client_question_id"
+ClientToolInstances ||--o{ ClientResponses : "instance_id"
+Respondents ||--o{ ClientResponses : "respondent_id"
+
+' Relationships between Respondent Node Tables and Client Node/Main Node
+ClientResponses ||--o{ RespondentAnswers : "response_id"
+ClientQuestions ||--o{ RespondentAnswers : "client_question_id"
+ClientAnswerOptions ||--o{ RespondentAnswers : "selected_option_id"
+Respondents ||--o{ VotingRecords : "respondent_id"
+Tools ||--o{ VotingRecords : "tool_id"
+ClientAnswerOptions ||--o{ VotingRecords : "selected_option_id"
+Respondents ||--o{ FormSubmissions : "respondent_id"
+ClientToolInstances ||--o{ FormSubmissions : "instance_id"
+ClientCategories ||--o{ FormSubmissions : "client_category_id"
+@enduml

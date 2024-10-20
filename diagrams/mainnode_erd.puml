@@ -1,0 +1,117 @@
+@startuml
+skinparam linetype ortho
+
+package "Main Node" {
+    entity "Nodes" {
+        * node_id : STRING <<PK>>  -- String ID
+        --
+        node_type : TEXT
+        node_status : TEXT
+        node_version : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Clients" {
+        * client_id : STRING <<PK>>  -- String ID
+        --
+        node_id : STRING <<FK>>     -- Link to Nodes
+        client_name : TEXT
+        schema_version : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Tools" {
+        * tool_id : STRING <<PK>>    -- String ID
+        --
+        client_id : STRING <<FK>>    -- Link to Clients
+        tool_type : TEXT
+        tool_name : TEXT
+        description : TEXT
+        created_at : DATETIME
+    }
+
+    entity "StandardCategories" {
+        * category_id : STRING <<PK>>  -- String ID
+        --
+        category_name : TEXT
+        tool_type : TEXT
+        created_at : DATETIME
+    }
+
+    entity "StandardQuestions" {
+        * question_id : STRING <<PK>>  -- String ID
+        --
+        category_id : STRING <<FK>>   -- Link to StandardCategories
+        question_text : TEXT
+        question_type : TEXT
+        created_at : DATETIME
+    }
+
+    entity "StandardAnswerOptions" {
+        * option_id : STRING <<PK>>   -- String ID
+        --
+        question_id : STRING <<FK>>   -- Link to StandardQuestions
+        answer_text : TEXT
+        created_at : DATETIME
+    }
+
+    entity "AdvancedTargetGroupCriteria" {
+        * criteria_id : STRING <<PK>>   -- String ID
+        --
+        tool_id : STRING <<FK>>         -- Link to Tools
+        target_criteria : TEXT
+        created_at : DATETIME
+    }
+
+    entity "Respondents" {
+        * respondent_id : STRING <<PK>>  -- String ID
+        --
+        node_id : STRING <<FK>>         -- Link to Nodes
+        respondent_name : TEXT
+        age : INTEGER
+        sex : TEXT
+        geolocation : TEXT
+        email : TEXT
+        schema_version : TEXT
+        created_at : DATETIME
+    }
+
+    entity "RespondentTools" {
+        * respondent_tool_id : STRING <<PK>>  -- String ID
+        --
+        respondent_id : STRING <<FK>>         -- Link to Respondents
+        tool_id : STRING <<FK>>               -- Link to Tools
+        last_participation_date : DATETIME
+        participation_count : INTEGER
+    }
+
+    entity "SchemaManagement" {
+        * schema_id : STRING <<PK>>  -- String ID
+        --
+        schema_version : TEXT
+        node_type : TEXT
+        schema_sql : TEXT
+        description : TEXT
+        applied_at : DATETIME
+    }
+
+    entity "NodeScripts" {
+        * script_id : STRING <<PK>>  -- String ID
+        --
+        node_type : TEXT
+        script_name : TEXT
+        script_version : TEXT
+        script_content : TEXT
+        created_at : DATETIME
+    }
+}
+
+' Relationships between Main Node Tables
+Clients ||--o{ Tools : "client_id"
+Tools ||--o{ StandardCategories : "tool_id"
+StandardCategories ||--o{ StandardQuestions : "category_id"
+StandardQuestions ||--o{ StandardAnswerOptions : "question_id"
+Tools ||--o{ AdvancedTargetGroupCriteria : "tool_id"
+Respondents ||--o{ RespondentTools : "respondent_id"
+Tools ||--o{ RespondentTools : "tool_id"
+@enduml
