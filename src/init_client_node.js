@@ -55,7 +55,7 @@ async function InitClientNodeApi(processId, client_id, client_name, callback) {
         tags: [{ name: 'Action', value: 'Eval' }],
       });  
       await RegisterClientApi(processId, client_id, client_name, callback);
-    } , 2000);
+    } , 5000);
   
   }
 }

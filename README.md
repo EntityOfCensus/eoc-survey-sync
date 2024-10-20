@@ -257,6 +257,40 @@ Main -> Main : Update AuditLog
 ```
 
 ## Installation and Usage
+
+To initialize the **Survey Sync Distributed AO System**, follow the steps below:
+
+1. **Run an AOS process to initialize the Main Node:**
+
+   ```bash
+   aos eoc-survey-sync-main --module=GYrbbe0VbHim_7Hi6zrOpHQXrSQz07XNtwCnfbFo2I0
+   ```
+
+2. **In the AOS console, load the main node API Lua script:**
+
+   ```bash
+   .load process/main_node_api.lua
+   ```
+4. **Exit the AOS console**  and add .env file to your project and add:
+
+   ```
+   JWK=wallet_json
+   MAIN_NODE_ID=aos process id
+   ```
+   
+4. Continue in the terminal with the following commands to initialize the system nodes:
+
+   ```bash
+   node src/init_main_node.js
+   ```
+   ```bash
+   node src/init_client_node.js
+   ```
+   ```bash
+   node src/init_respondent_node.js
+   ```
+Ensure that all dependencies are installed, and the Node.js environment is correctly configured for the distributed system.
+
 ### Requirements
 ### Running the AO Processes
 ## Contributing

@@ -55,7 +55,7 @@ async function InitRespondentNodeApi(processId, respondent_id, respondent_name, 
         tags: [{ name: 'Action', value: 'Eval' }],
       });  
       await RegisterRespondentApi(processId, respondent_id, respondent_name, age, sex, geolocation, email, callback);
-    } , 2000);
+    } , 5000);
   
   }
 }
