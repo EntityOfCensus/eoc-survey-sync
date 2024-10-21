@@ -15,13 +15,13 @@ function InitDb(schema_sql)
 end
 
 -- Utility Functions
-function InsertToolInstance(client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
+function InsertToolInstance(instance_id, client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
     -- SQL Insert into ClientToolInstances table
     local stmt = db:prepare([[
-        INSERT INTO ClientToolInstances (client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ClientToolInstances (instance_id, client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ]])
-    stmt:bind_values(client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
+    stmt:bind_values(instance_id, client_tool_id, instance_name, target_age_range, target_sex, target_geolocation, deployment_date, expiration_date)
     stmt:step()
     stmt:finalize()
 end
@@ -104,12 +104,21 @@ function DeployToolInstance(instance_id, target_nodes)
 end
 
 function GetToolInstanceDetails(instance_id)
-    -- SQL Select tool instance details
-    local stmt = db:prepare([[ SELECT * FROM ClientToolInstances WHERE instance_id = ? ]])
+    print("instance_id" .. instance_id)
+  -- SQL Select tool instance details
+    local stmt = db:prepare([[
+        SELECT instance_id, client_tool_id, instance_name, target_age_range, target_sex, 
+              target_geolocation, deployment_date, expiration_date, created_at 
+        FROM ClientToolInstances
+        WHERE instance_id = ? 
+    ]])
+    
+    -- [[ SELECT instance_id, client_tool_id, instance_name, target_age_range, target_sex, 
+    --          target_geolocation, deployment_date, expiration_date, created_at 
+    --     FROM ClientToolInstances WHERE instance_id = ? ]]
     stmt:bind_values(instance_id)
     local result = stmt:step()
     local details = {}
-
     while result == sqlite3.ROW do
         details = {
             instance_id = stmt:get_value(0),
@@ -119,7 +128,8 @@ function GetToolInstanceDetails(instance_id)
             target_sex = stmt:get_value(4),
             target_geolocation = stmt:get_value(5),
             deployment_date = stmt:get_value(6),
-            expiration_date = stmt:get_value(7)
+            expiration_date = stmt:get_value(7),
+            created_at = stmt:get_value(8)
         }
         result = stmt:step()
     end
@@ -194,7 +204,9 @@ end
 function GetPaginatedToolInstances(page, page_size)
   local offset = (page - 1) * page_size
   local stmt = db:prepare([[
-      SELECT * FROM ClientToolInstances
+      SELECT instance_id, client_tool_id, instance_name, target_age_range, target_sex, 
+             target_geolocation, deployment_date, expiration_date, created_at 
+      FROM ClientToolInstances
       LIMIT ? OFFSET ?
   ]])
   stmt:bind_values(page_size, offset)
@@ -210,7 +222,8 @@ function GetPaginatedToolInstances(page, page_size)
           target_sex = stmt:get_value(4),
           target_geolocation = stmt:get_value(5),
           deployment_date = stmt:get_value(6),
-          expiration_date = stmt:get_value(7)
+          expiration_date = stmt:get_value(7),
+          created_at = stmt:get_value(8)
       })
       result = stmt:step()
   end
@@ -278,6 +291,7 @@ Handlers.add(
     function(msg)
         local instance_data = json.decode(msg.Data)
         InsertToolInstance(
+            msg.id,
             instance_data.client_tool_id,
             instance_data.instance_name,
             instance_data.target_age_range,
@@ -405,7 +419,8 @@ Handlers.add(
     "GetToolInstanceDetails",
     Handlers.utils.hasMatchingTag("Action", "GetToolInstanceDetails"),
     function(msg)
-        local instance_id = msg.Data.instance_id
+        local instance_id = json.decode(msg.Data).instance_id
+        print("instance_id" .. instance_id)
         local details = GetToolInstanceDetails(instance_id)
         ao.send({ Target = msg.From, Data = json.encode(details) })
     end

@@ -76,7 +76,7 @@ async function getLatestApi(node_type) {
 
 async function getLatestSchemaManagement(node_type) {
   const data = {node_type: node_type};
-  const txData =   await dryrun({
+  const txData =  await dryrun({
       process: MAIN_NODE_ID,
       data: JSON.stringify(data),
       tags: [{ name: 'Action', value: 'GetLatestSchemaManagement' }],
