@@ -155,7 +155,7 @@ CLIENT_CATEGORIES = [[
   CREATE TABLE IF NOT EXISTS ClientCategories (
     client_category_id TEXT PRIMARY KEY,   -- String ID
     instance_id TEXT NOT NULL,             -- Link to ClientToolInstances
-    category_id TEXT NOT NULL,             -- Link to StandardCategories (in Main Node) managed via app logic
+    category_id TEXT,             -- Link to StandardCategories (in Main Node) managed via app logic
     FOREIGN KEY (instance_id) REFERENCES ClientToolInstances(instance_id)
   );
 ]]
@@ -586,7 +586,7 @@ Handlers.add(
 
         -- Call the InsertNodeScript function to insert or update the script
         local result = InsertNodeScript(
-            msg.id,
+            msg.Id,
             script_data.node_type,
             script_data.script_name,
             script_data.script_version,

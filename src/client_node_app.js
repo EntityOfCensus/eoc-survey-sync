@@ -103,6 +103,86 @@ async function deleteToolInstance(node_id, instanceId) {
     }
 }
 
+// Function to create a client category
+async function createClientCategory(node_id, instanceId, categoryName) {
+    const category_data = {
+        instance_id: instanceId,
+        category_name: categoryName
+    };
+    try {
+        const message_Id = await message({
+            process: node_id,
+            signer: createDataItemSigner(wallet),
+            data: JSON.stringify(category_data),
+            tags: [
+                { name: 'Action', value: 'CreateClientCategory' },
+            ],
+        });
+        console.log('Client category created:', message_Id);
+        return message_Id;
+    } catch (error) {
+        console.error('Error creating client category:', error);
+    }
+    return null;
+}
+
+// Function to update a client category
+async function updateClientCategory(node_id, clientCategoryId, categoryName) {
+    const category_data = {
+        client_category_id: clientCategoryId,
+        category_name: categoryName
+    };
+    try {
+        const message_Id = await message({
+            process: node_id,
+            signer: createDataItemSigner(wallet),
+            data: JSON.stringify(category_data),
+            tags: [
+                { name: 'Action', value: 'UpdateClientCategory' },
+            ],
+        });
+        console.log('Client category updated:', message_Id);
+    } catch (error) {
+        console.error('Error updating client category:', error);
+    }
+}
+
+// Function to delete a client category
+async function deleteClientCategory(node_id, clientCategoryId) {
+    const category_data = { client_category_id: clientCategoryId };
+    try {
+        const message_Id = await message({
+            process: node_id,
+            signer: createDataItemSigner(wallet),
+            data: JSON.stringify(category_data),
+            tags: [
+                { name: 'Action', value: 'DeleteClientCategory' },
+            ],
+        });
+        console.log('Client category deleted:', message_Id);
+    } catch (error) {
+        console.error('Error deleting client category:', error);
+    }
+}
+
+// Function to retrieve client categories
+async function getClientCategories(node_id, instanceId) {
+    const txData = await dryrun({
+        process: node_id,
+        data: JSON.stringify({ instance_id: instanceId }),
+        tags: [{ name: 'Action', value: 'GetClientCategories' }],
+    });
+    if (txData.Messages.length > 0) {
+        try {
+            const clientCategories = JSON.parse(txData.Messages[0].Data);
+            return clientCategories;
+        } catch (error) {
+            console.error('Error parsing client categories:', error);
+        }
+    }
+    return [];
+}
+
 // Function to create a question
 async function createQuestion(node_id, instanceId, clientCategoryId, questionText, questionType, orderNumber, additionalContext) {
     const question_data = {
@@ -123,9 +203,11 @@ async function createQuestion(node_id, instanceId, clientCategoryId, questionTex
             ],
         });
         console.log('Question created:', message_Id);
+        return message_Id;
     } catch (error) {
-        console.error('Error creating question:', error);
+        console.error('Error creating question:', error);    
     }
+    return null;
 }
 
 // Function to update a question
@@ -169,6 +251,25 @@ async function deleteQuestion(node_id, clientQuestionId) {
     } catch (error) {
         console.error('Error deleting question:', error);
     }
+}
+
+// Function to retrieve questions for a specific tool instance
+async function getQuestionsForToolInstance(node_id, instanceId) {
+    const txData = await dryrun({
+        process: node_id,
+        data: JSON.stringify({ instance_id: instanceId }),
+        tags: [{ name: 'Action', value: 'GetQuestionsForToolInstance' }],
+    });
+    
+    if (txData.Messages.length > 0) {
+        try {
+            const questions = JSON.parse(txData.Messages[0].Data);
+            return questions;
+        } catch (error) {
+            console.error('Error parsing questions data:', error);
+        }
+    }
+    return [];
 }
 
 // Function to deploy a tool instance to respondent nodes
@@ -232,23 +333,43 @@ async function getClientToolInstanceDetail(node_id, instance_id) {
 (async () => {
     // Example: Creating a new tool instance
     const instance_id  = await createToolInstance(CLIENT_NODE_ID, 'tool_001', 'Survey 2024', '18-45', 'All', 'USA', '2024-01-01', '2024-12-31');
-    
-    // // Example: Creating a question
-    // await createQuestion(CLIENT_NODE_ID, 'instance_001', 'category_001', 'What is your age?', 'multiple-choice', 1, null);
-    
-    // // Example: Updating a question
-    // await updateQuestion(CLIENT_NODE_ID, 'question_001', 'category_001', 'What is your favorite color?', 'multiple-choice', 2, null);
-
-    // // Example: Deleting a question
-    // await deleteQuestion(CLIENT_NODE_ID, 'question_001');
-
-    // // Example: Deploying a tool instance
-    // await deployToolInstance(CLIENT_NODE_ID, 'instance_001', ['node_a', 'node_b']);
-
     // Get paginated tool instances
     const clientToolInstances = await getClientToolInstances(CLIENT_NODE_ID, 1, 10);
     console.log('Tool Instances', clientToolInstances);
     const clientToolInstance = await getClientToolInstanceDetail(CLIENT_NODE_ID, instance_id);
     console.log('Tool Instance', clientToolInstance);
+
+            // Example: Creating a new client category
+    const client_category_id  =     await createClientCategory(CLIENT_NODE_ID, instance_id, 'Demographics');
+    console.log('Client Category Id:', client_category_id);
+
+        // Example: Updating a client category
+    // await updateClientCategory(CLIENT_NODE_ID, client_category_id, 'New Category Name');
+    
+    //     // Example: Deleting a client category
+    // await deleteClientCategory(CLIENT_NODE_ID, 'category_001');
+    
+        // Example: Retrieving client categories
+        const clientCategories = await getClientCategories(CLIENT_NODE_ID, instance_id);
+        console.log('Client Categories:', clientCategories);
+
+    // // Example: Creating a question
+    const client_question_id  = await createQuestion(CLIENT_NODE_ID, instance_id, client_category_id, 'What is your age?', 'multiple-choice', 1, null);
+    console.log('Client Question Id:', client_question_id);
+    
+    // // Example: Updating a question
+    // await updateQuestion(CLIENT_NODE_ID, 'question_001', 'category_001', 'What is your favorite color?', 'multiple-choice', 2, null);
+
+    const questions = await getQuestionsForToolInstance(CLIENT_NODE_ID, instance_id);
+    console.log('Questions for Tool Instance:', questions);
+    // // Example: Deleting a question
+    // await deleteQuestion(CLIENT_NODE_ID, 'question_001');
+
+
+    // // Example: Deploying a tool instance
+    // await deployToolInstance(CLIENT_NODE_ID, 'instance_001', ['node_a', 'node_b']);
+
+
+    
 
 })();

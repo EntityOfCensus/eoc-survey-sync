@@ -46,11 +46,70 @@ function DeleteToolInstance(instance_id)
     stmt:finalize()
 end
 
-function InsertQuestion(instance_id, client_category_id, question_text, question_type, order_number, additional_context)
+-- Function to insert a new client category
+function InsertClientCategory(client_category_id, instance_id, category_name)
+    local stmt = db:prepare([[
+        INSERT INTO ClientCategories (client_category_id, instance_id, category_name)
+        VALUES (?, ?, ?)
+    ]])
+    stmt:bind_values(client_category_id, instance_id, category_name)
+    stmt:step()
+    stmt:finalize()
+    return "Client category inserted"
+end
+
+-- Function to update an existing client category
+function UpdateClientCategory(client_category_id, category_name)
+    local stmt = db:prepare([[
+        UPDATE ClientCategories
+        SET category_name = ?
+        WHERE client_category_id = ?
+    ]])
+    stmt:bind_values(category_name, client_category_id)
+    stmt:step()
+    stmt:finalize()
+    return "Client category updated"
+end
+
+-- Function to delete a client category
+function DeleteClientCategory(client_category_id)
+    local stmt = db:prepare([[ DELETE FROM ClientCategories WHERE client_category_id = ? ]])
+    stmt:bind_values(client_category_id)
+    stmt:step()
+    stmt:finalize()
+    return "Client category deleted"
+end
+
+-- Function to get all client categories for a specific tool instance
+function GetClientCategories(instance_id)
+    print("instanceId: " .. instance_id)
+    local stmt = db:prepare([[
+        SELECT client_category_id, category_name, instance_id
+        FROM ClientCategories
+        WHERE instance_id = ?
+    ]])
+    -- stmt:bind_values(instance_id)
+    -- local result = stmt:step()
+
+    -- local categories = {}
+    -- while result == sqlite3.ROW do
+    --     table.insert(categories, {
+    --         client_category_id = stmt:get_value(0),
+    --         category_name = stmt:get_value(1),
+    --         instance_id = stmt:get_value(2)
+    --     })
+    --     result = stmt:step()
+    -- end
+
+    -- stmt:finalize()
+    return instance_id
+end
+
+function InsertQuestion(client_question_id, instance_id, client_category_id, question_text, question_type, order_number, additional_context)
     -- SQL Insert into ClientQuestions
     local stmt = db:prepare([[
-        INSERT INTO ClientQuestions (instance_id, client_category_id, question_text, question_type, order_number, additional_context)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO ClientQuestions (client_question_id, instance_id, client_category_id, question_text, question_type, order_number, additional_context)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     ]])
     stmt:bind_values(instance_id, client_category_id, question_text, question_type, order_number, additional_context)
     stmt:step()
@@ -291,7 +350,7 @@ Handlers.add(
     function(msg)
         local instance_data = json.decode(msg.Data)
         InsertToolInstance(
-            msg.id,
+            msg.Id,
             instance_data.client_tool_id,
             instance_data.instance_name,
             instance_data.target_age_range,
@@ -334,6 +393,67 @@ Handlers.add(
     end
 )
 
+-- CreateClientCategory Handler: Insert a new client category
+Handlers.add(
+    "CreateClientCategory",
+    Handlers.utils.hasMatchingTag("Action", "CreateClientCategory"),
+    function(msg)
+        local category_data = json.decode(msg.Data)
+        local result = InsertClientCategory(msg.Id, category_data.instance_id, category_data.category_name)
+
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
+    end
+)
+
+-- UpdateClientCategory Handler: Update an existing client category
+Handlers.add(
+    "UpdateClientCategory",
+    Handlers.utils.hasMatchingTag("Action", "UpdateClientCategory"),
+    function(msg)
+        local category_data = json.decode(msg.Data)
+        local result = UpdateClientCategory(category_data.client_category_id, category_data.category_name)
+
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
+    end
+)
+
+-- DeleteClientCategory Handler: Delete a client category
+Handlers.add(
+    "DeleteClientCategory",
+    Handlers.utils.hasMatchingTag("Action", "DeleteClientCategory"),
+    function(msg)
+        local category_data = json.decode(msg.Data)
+        local result = DeleteClientCategory(category_data.client_category_id)
+
+        ao.send({
+            Target = msg.From,
+            Data = result
+        })
+    end
+)
+
+-- GetClientCategories Handler: Retrieve all client categories for a tool instance
+Handlers.add(
+    "GetClientCategories",
+    Handlers.utils.hasMatchingTag("Action", "GetClientCategories"),
+    function(msg)
+        local instance_data = json.decode(msg.Data)
+        print(instance_data.instance_id .. " :: " .. msg.Data)
+        local categories = GetClientCategories(instance_data.instance_id)
+
+        ao.send({
+            Target = msg.From,
+            Data = categories
+        })
+    end
+)
+
 -- CreateQuestion Handler
 Handlers.add(
     "CreateQuestion",
@@ -341,6 +461,7 @@ Handlers.add(
     function(msg)
         local question_data = json.decode(msg.Data)
         InsertQuestion(
+            msg.Id,
             question_data.instance_id,
             question_data.client_category_id,
             question_data.question_text,
