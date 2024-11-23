@@ -164,6 +164,32 @@ Main -> Main : Record in Respondents Table
 Main -> Main : Update AuditLog
 @enduml
 ```
+```
+@startuml
+actor Client
+actor Respondent
+participant "Main AO Process" as Main
+participant "Client AO Node" as ClientNode
+participant "Respondent AO Node" as RespondentNode
+participant "Client FHE Node" as ClientFHE
+participant "Respondent FHE Node" as RespondentFHE
+
+== Client Registration ==
+Client -> Main : RegisterClient(client_name)
+Main -> ClientNode : Create new AO Node for Client
+Main -> ClientFHE : Register client in FHE Node
+Main -> Main : Record in Clients Table
+Main -> Main : Update AuditLog
+
+== Respondent Registration ==
+Respondent -> Main : RegisterRespondent(respondent_name, age, sex, geolocation)
+Main -> RespondentNode : Create new AO Node for Respondent
+Main -> RespondentFHE : Register respondent in FHE Node
+Main -> Main : Record in Respondents Table
+Main -> Main : Update AuditLog
+@enduml
+```
+
 ### 2. Survey Creation and Publication
 
 ![Survey Creation and Publication](assets/Survey_Creation_and_Publication.svg)

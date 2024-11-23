@@ -83,15 +83,56 @@ end
 -- Function to get all client categories for a specific tool instance
 function GetClientCategories(instance_id)
     print("instanceId: " .. instance_id)
+
     local stmt = db:prepare([[
-        SELECT client_category_id, category_name, instance_id
-        FROM ClientCategories
-        WHERE instance_id = ?
+        INSERT INTO ClientCategories (client_category_id, instance_id, category_name)
+        VALUES (?, ?, ?)
     ]])
-    -- stmt:bind_values(instance_id)
+  
+    -- local stmt = db:prepare([[
+    --     SELECT client_category_id, category_name, instance_id
+    --     FROM ClientCategories
+    -- ]])
+    print("------------ stmt: " .. stmt)
+    -- stmt:bind_values(page_size, offset)
+    -- local result = stmt:step()
+    -- local instances = {}
+  
+    -- while result == sqlite3.ROW do
+    --     table.insert(instances, {
+    --         instance_id = stmt:get_value(0),
+    --         client_tool_id = stmt:get_value(1),
+    --         instance_name = stmt:get_value(2),
+    --         target_age_range = stmt:get_value(3),
+    --         target_sex = stmt:get_value(4),
+    --         target_geolocation = stmt:get_value(5),
+    --         deployment_date = stmt:get_value(6),
+    --         expiration_date = stmt:get_value(7),
+    --         created_at = stmt:get_value(8)
+    --     })
+    --     result = stmt:step()
+    -- end
+  
+    -- stmt:finalize()
+    -- return instances
+  
+
+    -- local stmt = db:prepare([[
+    --     SELECT client_category_id, category_name, instance_id
+    --     FROM ClientCategories
+    -- ]])
+  
+    -- local stmts = db:prepare([[
+    --     SELECT client_category_id, category_name, instance_id
+    --     FROM ClientCategories
+    --     WHERE instance_id = ?
+    -- ]])
+  
+    -- stmts:bind_values(instance_id)
+
     -- local result = stmt:step()
 
-    -- local categories = {}
+    local categories = {}
     -- while result == sqlite3.ROW do
     --     table.insert(categories, {
     --         client_category_id = stmt:get_value(0),
@@ -102,7 +143,7 @@ function GetClientCategories(instance_id)
     -- end
 
     -- stmt:finalize()
-    return instance_id
+    return categories
 end
 
 function InsertQuestion(client_question_id, instance_id, client_category_id, question_text, question_type, order_number, additional_context)
@@ -449,7 +490,7 @@ Handlers.add(
 
         ao.send({
             Target = msg.From,
-            Data = categories
+            Data = json.encode(categories)
         })
     end
 )
