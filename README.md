@@ -164,7 +164,7 @@ Main -> Main : Record in Respondents Table
 Main -> Main : Update AuditLog
 @enduml
 ```
-```
+```plantuml
 @startuml
 actor Client
 actor Respondent
